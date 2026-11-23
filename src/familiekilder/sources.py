@@ -22,12 +22,16 @@ To add a service, write its modules and add one `Source` below:
 
 `web_script()` renders `label`, `letter`, `description` and `kind` as
 `/services.js` for a web front end.
+
+An application that embeds this package can add services of its own with
+`register` (internal API); see its docstring.
 """
 
 from __future__ import annotations
 
 import importlib
 import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 COMMON_ACTIONS = ("send_message", "reply_message", "register_absence", "set_participation")
@@ -49,19 +53,21 @@ class Source:
     # Action categories with verified wire contracts, and implemented actions.
     verified: frozenset[str] = frozenset()
     implemented: frozenset[str] = frozenset()
-    # Actions offered besides COMMON_ACTIONS; False means read-only (Gmail).
+    # Actions offered besides COMMON_ACTIONS.
     extra_actions: tuple[str, ...] = ()
+    # False when the source is read-only (Flyt).
     writes: bool = True
     auth_commands: frozenset[str] = frozenset()
     logout_revokes: bool = False
-    # "browser", "google" or "token" (a personal access token the user pastes).
+    # "browser" or "token" (a personal access token the user pastes). A source
+    # added with `register` may name a login of its own that it handles itself.
     login: str = "browser"
     streams: tuple[str, ...] = ("feed",)
     # The feed holds notifications that are read from the list only.
     notifications: bool = False
     # Local request pacing and cooldowns in `live_traffic`.
     paced: bool = False
-    # "login_30_days", "refresh_deadline", "long_lived" or "google".
+    # "login_30_days", "refresh_deadline" or "long_lived" (`session_estimates`).
     session_estimate: str = "login_30_days"
     # Part of signed native provider bundles (`provider_bundle.py`).
     provider_bundle: bool = True
@@ -69,6 +75,20 @@ class Source:
     aliases: tuple[str, ...] = ()
     # False when the source gives no attachments: no `<source>_read_attachment`.
     attachments: bool = True
+    # False when the source has no broad listing: no `<source>_list_items`, and
+    # list reads are refused. Such a source is searched with a `<source>_search`
+    # tool instead, which its application adds.
+    listable: bool = True
+    # False refuses write permissions for the source in the configuration.
+    write_permissions: bool = True
+    # The login's file in `.private/credentials`; empty: `<name>-session.json`.
+    session_file: str = ""
+    # Auth history and response journals in `auth_lifecycle`. False keeps only
+    # installation ownership and moved markers, for a login with its own records.
+    auth_journal: bool = True
+    # Seconds a read waits for the source lock held by a parallel read; None
+    # fails at once.
+    read_lock_wait: float | None = None
 
 
 _OAUTH_COMMANDS = frozenset(
@@ -162,17 +182,6 @@ REGISTRY = {
             paced=True,
             provider_bundle=False,
         ),
-        # Email is searched for specific questions, never listed wholesale.
-        Source(
-            "gmail", "Gmail", "gmail_auth", "live_gmail_reader",
-            letter="@", description="Supplerende informasjon på e-post",
-            kind="mail",
-            writes=False,
-            login="google",
-            streams=(),
-            session_estimate="google",
-            provider_bundle=False,
-        ),
     )
 }
 
@@ -193,9 +202,82 @@ def web_script() -> str:
             f"globalThis.Services = {json.dumps(catalog, ensure_ascii=False, indent=2)};\n")
 
 
+def register(source: Source) -> None:
+    """Add a service defined outside this package (internal API).
+
+    For an application that embeds these connectors and has services of its
+    own. The module names in `auth`, `reader` and `actions` are then full
+    import paths. Call it before the application reads or serves sources.
+    The package looks the registry up when it is used, also through
+    `SourceNames`, so the service is then everywhere the package's own are.
+    MCP tools beyond the standard reads are added through the `extensions` of
+    `source_server.build_server`.
+    """
+    if not isinstance(source, Source):
+        raise TypeError("register() takes a Source")
+    if source.name in REGISTRY:
+        raise ValueError(f"{source.name!r} is already registered")
+    for name in (source.auth, source.reader, *source.actions):
+        if "." not in name:
+            raise ValueError(f"{name!r} must be a full module path")
+    REGISTRY[source.name] = source
+
+
+class SourceNames(Sequence):
+    """Names of the registered services, read from REGISTRY on every use.
+
+    `where(source)` picks the services, and the `first` names come before
+    them. A module keeps one of these instead of a tuple, so services added
+    with `register` after the module was imported are included.
+    """
+
+    def __init__(self, where: Callable[[Source], bool] | None = None, *,
+                 first: tuple[str, ...] = ()):
+        self._where = where
+        self._first = tuple(first)
+
+    def _names(self) -> tuple[str, ...]:
+        return (*self._first, *(
+            name for name, source in REGISTRY.items()
+            if self._where is None or self._where(source)
+        ))
+
+    def __getitem__(self, index):
+        return self._names()[index]
+
+    def __len__(self) -> int:
+        return len(self._names())
+
+    def __iter__(self):
+        return iter(self._names())
+
+    def __contains__(self, value) -> bool:
+        return value in self._names()
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, (SourceNames, tuple)):
+            return self._names() == tuple(other)
+        return NotImplemented
+
+    __hash__ = None
+
+    def __repr__(self) -> str:
+        return repr(self._names())
+
+
+def module_path(name: str) -> str:
+    """The import path of a module named in the registry."""
+    return name if "." in name else f"{__package__}.{name}"
+
+
 def module(name: str):
     """Import a service module named in the registry, on first use only."""
-    return importlib.import_module(f"{__package__}.{name}")
+    return importlib.import_module(module_path(name))
+
+
+def session_file(source: str) -> str:
+    """The name of the source's login file in `.private/credentials`."""
+    return REGISTRY[source].session_file or f"{source}-session.json"
 
 
 def reader(source: str):

@@ -12,9 +12,9 @@ import sys
 from . import desktop_platform
 from .core import FamiliekilderError, project_paths
 from .private_state import atomic_write_private_json, read_private_json
-from .sources import REGISTRY
+from .sources import SourceNames
 
-KINDS = ("bankid", *(name for name, s in REGISTRY.items() if s.password_origins))
+KINDS = SourceNames(lambda source: bool(source.password_origins), first=("bankid",))
 SERVICE = "no.familiekilder.login-password.v1"
 
 

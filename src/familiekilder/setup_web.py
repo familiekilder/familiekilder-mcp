@@ -97,9 +97,6 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(200, payload, mime + "; charset=utf-8")
         elif path == "/favicon.ico":
             self._reply(204, b"", "image/x-icon")
-        elif path == "/help/client":
-            help_file = ASSETS / "client-help.txt"
-            self._reply(200, help_file.read_bytes(), "text/plain; charset=utf-8")
         else:
             self._reply(404, {"error": "Siden finnes ikke."})
 
@@ -129,9 +126,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         service = self.server.service
         try:
-            if path == "/api/client-file":
-                service.import_client(value.get("source"), value.get("content"))
-            elif path == "/api/start":
+            if path == "/api/start":
                 service.start(value.get("action"), value.get("source", ""),
                               consent=value.get("consent") is True, replace=value.get("replace") is True,
                               municipality=value.get("municipality"))

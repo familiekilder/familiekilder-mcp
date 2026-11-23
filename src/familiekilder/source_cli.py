@@ -461,10 +461,16 @@ def _run_auth(args: argparse.Namespace, config: Config) -> int:
         refuse_on_remote_host("Innlogging")
     if args.auth_command != "configure" or not args.program.allow_setup:
         config.require(args.source)
-    if args.source == "gmail":
-        from .gmail_auth import run as gmail_auth
+    from .sources import REGISTRY
 
-        return gmail_auth(args, config.root)
+    if not REGISTRY[args.source].auth_commands:
+        # A source without auth_commands handles the auth commands itself
+        # with `run_auth_command(args, root)` in its auth module.
+        from .connection_status import auth_module
+
+        own = getattr(auth_module(args.source), "run_auth_command", None)
+        if callable(own):
+            return own(args, config.root)
     return _run_generic_auth(args, config.root)
 
 

@@ -10,14 +10,17 @@ from .core import FamiliekilderError
 from .login_passwords import configured, get_password
 from .sources import REGISTRY
 
-ORIGINS = {
-    "bankid": (
-        "https://csfe.bankid.no",
-        "https://auth.bankid.no",
-        "https://login.bankid.no",
-    ),
-    **{name: s.password_origins for name, s in REGISTRY.items() if s.password_origins},
-}
+BANKID_ORIGINS = (
+    "https://csfe.bankid.no",
+    "https://auth.bankid.no",
+    "https://login.bankid.no",
+)
+
+
+def origins(kind):
+    """The exact origins where the password of `kind` may be filled in."""
+    return BANKID_ORIGINS if kind == "bankid" else REGISTRY[kind].password_origins
+
 
 # Select a single visible, empty password field. Verify origin again in the
 # document itself, including when a frame navigates between CDP calls.
@@ -113,7 +116,7 @@ class PasswordAutofill:
 
                 if not any(
                     _exact_origin(frame.get("url"), origin)
-                    for origin in ORIGINS[self.kind]
+                    for origin in origins(self.kind)
                 ):
                     continue
                 try:
@@ -130,7 +133,7 @@ class PasswordAutofill:
                     # navigating during discovery are checked on the next tick.
                     continue
                 expression = _SELECTOR.replace(
-                    "ORIGINS", json.dumps(ORIGINS[self.kind])
+                    "ORIGINS", json.dumps(origins(self.kind))
                 ).replace("BANKID", str(self.kind == "bankid").lower())
                 response = cdp.call(
                     "Runtime.evaluate",
@@ -157,7 +160,7 @@ class PasswordAutofill:
                             "functionDeclaration": _FILL,
                             "arguments": [
                                 {"value": password},
-                                {"value": list(ORIGINS[self.kind])},
+                                {"value": list(origins(self.kind))},
                             ],
                             "returnByValue": True,
                             "silent": True,

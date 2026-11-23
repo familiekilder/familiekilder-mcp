@@ -41,7 +41,7 @@ LOGIN_WAIT_SECONDS = 600
 LOGIN_CHECK_SECONDS = 1.0
 
 # How the wizard sets up a source that has no client setup yet.
-_SETUP_WITHOUT_DEFAULT = {"flyt": "municipality", "gmail": "file"}
+_SETUP_WITHOUT_DEFAULT = {"flyt": "municipality"}
 MAX_MUNICIPALITY_LENGTH = 200
 
 
@@ -208,30 +208,6 @@ class SetupService:
                 self._municipalities = sorted(rows, key=lambda row: (row["name"].casefold(), row["id"]))
             return [dict(row) for row in self._municipalities]
 
-    def import_client(self, source: str, content: str) -> None:
-        """Import a client file the user chose; only for sources set up with a file."""
-
-        if (not isinstance(source, str) or source not in REGISTRY or setup_kind(source) != "file"
-                or not isinstance(content, str) or len(content.encode()) > 1024 * 1024):
-            raise SetupError("Velg en gyldig JSON-fil for tjenesten.")
-        with self.lock:
-            self._idle()
-            # The file is replaced only before a login; a session keeps its client.
-            try:
-                session = has_local_session(auth_module(source), self.root)
-            except Exception:
-                session = True
-            if session:
-                raise SetupError(
-                    f"{REGISTRY[source].label} har en lagret innlogging, så filen byttes ikke. "
-                    f"Logg ut med «familiekilder-mcp auth {source} logout» først."
-                )
-            try:
-                self._configure_client(source, content)
-            except Exception:
-                raise SetupError("Filen kunne ikke brukes. Kontroller at den er klientoppsettet for denne tjenesten.") from None
-            self.tested = False
-
     def _configure_client(self, source: str, content: str) -> None:
         import_client_text(self.root, auth_module(source), content)
 
@@ -300,7 +276,7 @@ class SetupService:
             if action == "login":
                 module = auth_module(source)
                 status = module.auth_status(self.root)
-                if source != "gmail" and consent is not True:
+                if consent is not True:
                     raise SetupError("Bekreft at du vil bruke den uoffisielle koblingen.")
                 if status.get("configured"):
                     municipality = self._municipality_change(module, municipality, replace=replace)
@@ -318,8 +294,6 @@ class SetupService:
                     kind = setup_kind(source)
                     if kind == "municipality" and municipality is None:
                         raise SetupError("Velg kommune før du logger inn.")
-                    if kind == "file":
-                        raise SetupError("Velg filen med Google-klienten før du logger inn.")
                     if kind != "municipality":
                         raise SetupError("Denne tjenesten kan ikke settes opp i veiviseren ennå. Bruk kommandolinjen.")
                 if has_local_session(module, self.root) and replace is not True:
@@ -557,11 +531,7 @@ class SetupService:
 
         source = job.source
         job.message = "Fullfør innloggingen i nettleservinduet. BankID godkjenner du selv."
-        if source == "gmail":
-            from .gmail_auth import login
-
-            login(self.root, cancelled=job.cancel.is_set)
-        elif "browser-bootstrap" in REGISTRY[source].auth_commands:
+        if "browser-bootstrap" in REGISTRY[source].auth_commands:
             deadline = time.monotonic() + LOGIN_WAIT_SECONDS
 
             # Returns when the user presses «Jeg er logget inn» or the login is detected.

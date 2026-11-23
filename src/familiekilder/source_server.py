@@ -1,8 +1,8 @@
 """Source-only MCP server: live source reads, write actions and connections.
 
-`build_server` registers `family_connections`, each enabled source's read and
-write tools and `gmail_search`, then lets callers add their own tools through
-`extensions` and adjust the finished catalog through `finalize`. `Runtime`
+`build_server` registers `family_connections` and each enabled source's read
+and write tools, then lets callers add their own tools through `extensions`
+and adjust the finished catalog through `finalize`. `Runtime`
 holds read receipts, page cursors and attachment preparations; its hook
 methods (marked "Hook") are no-ops here and are overridden by a downstream
 server. Nothing in this module imports such a server.
@@ -187,19 +187,11 @@ class Runtime:
         """Hook: public links in a source item that may be looked up later."""
         return []
 
-    def require_gmail_allowed(self):
-        """Hook: raise FamiliekilderError when Gmail may not be read right now."""
+    def require_source_allowed(self, source):
+        """Hook: raise FamiliekilderError when `source` may not be read right now.
 
-    def check_gmail_query(self, query):
-        """Hook: raise FamiliekilderError to refuse a Gmail query before it is sent."""
-
-    def gmail_search_budget(self):
-        """Hook: read allowance for `search_gmail`, or None for no allowance.
-
-        The allowance needs `max_results` (page size cap), `limitation` (text
-        when exhausted), `reserve(message_id) -> bool` and `status() -> dict`.
+        Called before every detail and attachment read.
         """
-        return None
 
     def snapshot_key(self):
         """Hook: key of the current shared read snapshot, or None for none."""
@@ -436,8 +428,8 @@ class Runtime:
         refresh=False,
     ):
         self.config.require(source)
-        if source == 'gmail':
-            raise FamiliekilderError('Gmail støtter målrettet gmail_search, ikke brede listeoppslag')
+        from .live_readers import require_listable
+        require_listable(source)
         self.cleanup()
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise FamiliekilderError("limit må være et heltall 1–50 per side; følg next_cursor for flere treff")
@@ -565,102 +557,9 @@ class Runtime:
             fetched = fetched_at(source) or now()
         return {'item': item, 'cacheable': item.get('content_complete', True) is True, 'fetched_at': fetched}
 
-    def search_gmail(self, query, limit=20, cursor=None, include_spam_trash=False):
-        from .gmail import search_query
-        from .live_readers import search_gmail_live
-
-        self.config.require("gmail")
-        self.require_gmail_allowed()
-        self.cleanup()
-        search_query(query)
-        self.check_gmail_query(query)
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
-            raise FamiliekilderError("limit må være et heltall 1–50 per side; følg next_cursor for flere treff")
-        if not isinstance(include_spam_trash, bool):
-            raise FamiliekilderError("include_spam_trash må være en boolsk verdi")
-        budget = self.gmail_search_budget()
-        if budget is not None:
-            limit = min(limit, budget.max_results)
-        signature = ("gmail_search", query, include_spam_trash)
-        entry = {"page_token": None, "tokens": set(), "seen": set(), "limitations": []}
-        if cursor:
-            with self.lock:
-                entry = self.pages.get(cursor)
-            if not entry or entry["signature"] != signature or not self.receipt_is_current(entry):
-                raise FamiliekilderError("Utløpt eller ugyldig sidemarkør; start søket på nytt")
-            if entry['account_scope'] != self._account_scope('gmail'):
-                raise FamiliekilderError('Sidene tilhører en tidligere innlogging; start søket på nytt')
-        from .read_cache import LIST_FRESHNESS
-        def load():
-            value = search_gmail_live(getattr(self, 'read_root', self.config.root), query, limit,
-                                      entry['page_token'], include_spam_trash, budget=budget)
-            from .sync_snapshot import fetched_at
-            return {**value, 'items': [self._cache_item(item) for item in value['items']],
-                    'fetched_at': fetched_at('gmail') or now(),
-                    'cacheable': not value['restart_required'] and not value['limitations']}
-        record = self._fetch_read('gmail', 'search',
-            [query, limit, entry['page_token'], include_spam_trash], load, max_age=LIST_FRESHNESS)
-        result = record['data']
-        fetched_at = self.read_cache.metadata(record)['fetched_at']
-        limitations = entry["limitations"] + result["limitations"]
-        seen = set(entry["seen"])
-        items = []
-        budget_blocked = bool(result.get('budget_exhausted'))
-        for item in result["items"]:
-            if item["source_id"] in seen:
-                limitations.append("Gmail gjentok en meldings-ID mellom sider; dekningen er ufullstendig.")
-                continue
-            if budget is not None and not budget.reserve(item['reference']['id']):
-                limitations.append(budget.limitation)
-                budget_blocked = True
-                break
-            seen.add(item["source_id"])
-            items.append(self.expose("gmail", item, fetched_at=fetched_at, cached_age=record['age_seconds'],
-                                     snapshot_job=record.get('snapshot_job')))
-        tokens = entry["tokens"] | {entry["page_token"]}
-        following = None if budget_blocked else result["next_page_token"]
-        restart_required = result["restart_required"] and not budget_blocked
-        if following and following in tokens:
-            limitations.append("Gmail gjentok en sidemarkør; start søket på nytt.")
-            following, restart_required = None, True
-        limitations = list(dict.fromkeys(limitations))
-        next_cursor = None
-        if following:
-            next_cursor = str(uuid.uuid4())
-            with self.lock:
-                self.pages[next_cursor] = {
-                    "at": time.monotonic(), "signature": signature,
-                    "page_token": following, "tokens": tokens, "seen": seen,
-                    "limitations": limitations,
-                    'account_scope': self._account_scope('gmail'),
-                    'source': 'gmail', 'snapshot_job': record.get('snapshot_job'),
-                }
-        complete = result["complete"] and not next_cursor and not limitations
-        if self.message_progress is not None:
-            try:
-                self.message_progress.gmail_search(signature,
-                    [self.observations[item['observation_token']] for item in items],
-                    complete, self._account_scope('gmail'), fetched_at)
-            except Exception:
-                pass  # Telemetry cannot fail or replay a source search.
-        return {
-            "source": "gmail", "items": items, "fetched_at": fetched_at,
-            "complete": complete,
-            "next_cursor": next_cursor, "has_more": bool(next_cursor),
-            "restart_required": restart_required, "limitations": limitations,
-            "coverage": "Ferskt Gmail API-søk per melding, uten automatisk datogrense eller relevansfilter. "
-                        "complete=false mens flere sider eller begrensninger gjenstår. "
-                        "Manglende treff er ikke bevis på avlysning.",
-            "search_scope": "Gmail-søkesyntaks; spam og papirkurv inkluderes bare med include_spam_trash=true.",
-            'cache': self.read_cache.metadata(record),
-            **({'read_budget': budget.status()} if budget is not None else {}),
-            **({'incomplete_reason': 'read_budget'} if budget_blocked else {}),
-        }
-
     def get_item(self, source, reference, freshness='recent'):
         self.config.require(source)
-        if source == 'gmail':
-            self.require_gmail_allowed()
+        self.require_source_allowed(source)
         self.cleanup()
         if freshness not in {'recent', 'cached', 'fresh'}:
             raise FamiliekilderError('freshness må være recent, cached eller fresh')
@@ -749,8 +648,7 @@ class Runtime:
         from .pdf_windows import WINDOW_SECONDS
         deadline = time.monotonic() + WINDOW_SECONDS
         self.config.require(source)
-        if source == 'gmail':
-            self.require_gmail_allowed()
+        self.require_source_allowed(source)
         self.cleanup()
         automatic = self.attachment_flow and after_page is None and after_chunk == 0
         after_page = 0 if after_page is None else after_page
@@ -1255,7 +1153,8 @@ def accept_extra_arguments(fn, parameters):
 def register_source_reads(server, runtime, source):
     """Register `<source>_list_items`, `_get_item` and `_read_attachment`.
 
-    Gmail gets no `list_items`; it is searched with `gmail_search` instead.
+    A source that is not `listable` gets no `list_items`, and one without
+    `attachments` no `read_attachment`.
     """
     prefix = source.replace("-", "_")
 
@@ -1366,7 +1265,7 @@ def register_source_reads(server, runtime, source):
             # Like attachment_flow above: any object with read methods serves as runtime.
             extra = getattr(runtime, 'attachment_read_parameters', None)
             fn = accept_extra_arguments(fn, extra() if extra is not None else [])
-        if source == "gmail" and name == "list_items":
+        if name == "list_items" and source in REGISTRY and not REGISTRY[source].listable:
             continue
         if name == "read_attachment" and source in REGISTRY and not REGISTRY[source].attachments:
             continue
@@ -1374,39 +1273,6 @@ def register_source_reads(server, runtime, source):
             safe_tool(fn), name=prefix + "_" + name,
             description=description, annotations=READ,
         )
-
-
-def register_gmail_search(server, runtime):
-    def gmail_search(
-        query: Annotated[str, Field(
-            min_length=1,
-            description="Gmail API-søkesyntaks sendt uendret til Google: from:, subject:, after:, before:, has:attachment, OR og {…}. Ingen automatisk 14-dagersgrense.",
-            examples=['from:klubben.no subject:påmelding', '{parkour turn} has:attachment'],
-        )],
-        limit: Annotated[int, Field(
-            ge=1, le=50, strict=True,
-            description="Antall treff per API-side, 1–50 (standard 20).",
-        )] = 20,
-        cursor: Annotated[str | None, Field(
-            description="next_cursor fra forrige side. Behold query og include_spam_trash. Markøren utløper etter 15 minutter.",
-        )] = None,
-        include_spam_trash: Annotated[bool, Field(
-            strict=True,
-            description="Inkluder spam og papirkurv i søkeområdet (standard false).",
-        )] = False,
-    ) -> dict:
-        return runtime.search_gmail(query, limit, cursor, include_spam_trash)
-
-    server.add_tool(safe_tool(gmail_search), name="gmail_search", annotations=READ,
-        description="Søk etter bestemte e-poster, også ut fra funn i andre tjenester. "
-                    "Bruk Gmail API-søkesyntaks; alle treff beholdes uten relevansfiltrering. "
-                    "Følg next_cursor med samme query og include_spam_trash. Identiske API-sider gjenbrukes i opptil 60 sekunder med opprinnelig fetched_at. "
-                    "complete=false betyr at sider eller begrensninger gjenstår; "
-                    "ved restart_required=true må søket startes på nytt. "
-                    "Les detaljer og vedlegg med gmail_get_item/gmail_read_attachment. "
-                    "Datoer som YYYY/MM/DD tolkes i PST; bruk epoch-sekunder for presise lokale grenser. "
-                    "API-et søker per melding uten automatisk aliasutvidelse eller søk over hele tråden. "
-                    "Ingen e-post endres.")
 
 
 SOURCE_INSTRUCTIONS = (
@@ -1441,9 +1307,9 @@ def build_server(config, *, runtime=None, server_factory=default_server, extensi
     `server_factory(runtime)` creates the server. The catalog starts with
     `family_connections` (`connections_tool`, default `runtime.connections`),
     then each enabled source's read tools and either its write actions or,
-    with `source_runtime`, its context reads from that runtime, then
-    `gmail_search`. Each `extension(server, runtime)` then adds its tools in
-    order, and `finalize(server, runtime)` may adjust or remove tools last.
+    with `source_runtime`, its context reads from that runtime. Each
+    `extension(server, runtime)` then adds its tools in order, and
+    `finalize(server, runtime)` may adjust or remove tools last.
     """
     from .live_actions import register_actions, register_source_context_reads
 
@@ -1462,8 +1328,6 @@ def build_server(config, *, runtime=None, server_factory=default_server, extensi
             register_actions(server, runtime, source)
         else:
             register_source_context_reads(server, source_runtime, source)
-    if "gmail" in config.services:
-        register_gmail_search(server, runtime)
     for extension in extensions:
         extension(server, runtime)
     if finalize is not None:

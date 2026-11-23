@@ -16,17 +16,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .sources import REGISTRY
+from .sources import REGISTRY, SourceNames
 
 OSLO = ZoneInfo("Europe/Oslo")
 
 
-SOURCES = tuple(REGISTRY)
-# Signed native provider bundles exclude Google's independently authorized API.
-PROVIDER_SOURCES = tuple(source for source in SOURCES if REGISTRY[source].provider_bundle)
-
-
-SOURCE_ALIASES = {alias: s.name for s in REGISTRY.values() for alias in s.aliases}
+SOURCES = SourceNames()
+# Sources in signed native provider bundles (`Source.provider_bundle`).
+PROVIDER_SOURCES = SourceNames(lambda source: source.provider_bundle)
 
 
 # Error texts a program built on this package words its own way; see reword_errors.
@@ -184,7 +181,8 @@ def ensure_private_layout(paths: Paths) -> None:
 
 
 def normalize_source(value: str) -> str:
-    source = SOURCE_ALIASES.get(value.strip().lower(), value.strip().lower())
+    aliases = {alias: s.name for s in REGISTRY.values() for alias in s.aliases}
+    source = aliases.get(value.strip().lower(), value.strip().lower())
     if source not in SOURCES:
         raise FamiliekilderError(
             f"Ukjent kilde {value!r}; forventet en av: {', '.join(SOURCES)}"

@@ -229,11 +229,6 @@ p {
 .status.attention_required {
   color: var(--danger);
 }
-.service-help {
-  display: inline-block;
-  margin-top: 6px;
-  font-size: 13px;
-}
 .service-controls .text-button {
   padding: 0;
   font-size: 12px;

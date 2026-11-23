@@ -4,7 +4,6 @@ const token = document.querySelector('meta[name="setup-token"]').content;
 const byId = (id) => document.getElementById(id);
 let currentState = null;
 let selectedSource = null;
-let fileSource = null;
 let polling = false;
 let busy = false;
 let closed = false;
@@ -67,12 +66,6 @@ function showStep(number) {
     else step.removeAttribute('aria-current');
   });
   byId(`title-${number}`).focus();
-}
-
-function selectFile(source) {
-  fileSource = source;
-  byId('client-file').value = '';
-  byId('client-file').click();
 }
 
 function loadMunicipalities() {
@@ -167,9 +160,7 @@ function openLogin(source) {
         loginError('Kommunelisten kunne ikke hentes. Kontroller nettforbindelsen og prøv igjen.'),
     );
   }
-  byId('consent-label').hidden = source.id === 'gmail';
   byId('consent').checked = false;
-  byId('consent').required = source.id !== 'gmail';
   byId('replace-label').hidden = !source.has_session;
   byId('replace').checked = false;
   byId('replace').required = source.has_session;
@@ -229,13 +220,6 @@ function serviceAction(source) {
       action: () => openLogin(source),
     };
   }
-  if (source.state === 'setup_required' && source.setup === 'file') {
-    return {
-      status: 'Trenger Google-fil',
-      label: 'Velg Google-fil',
-      action: () => selectFile(source.id),
-    };
-  }
   if (source.state === 'setup_required' && source.setup === 'unavailable') {
     return { status: 'Ikke tilgjengelig i veiviseren ennå', label: null, action: null };
   }
@@ -274,15 +258,6 @@ function renderServices(state) {
       detail.textContent = source.detail;
       info.append(detail);
     }
-    if (source.setup === 'file') {
-      const help = document.createElement('a');
-      help.className = 'service-help';
-      help.href = '/help/client';
-      help.target = '_blank';
-      help.rel = 'noreferrer';
-      help.textContent = 'Slik lager du Google-filen';
-      info.append(help);
-    }
     const controls = document.createElement('div');
     controls.className = 'service-controls';
     const choice = serviceAction(source);
@@ -304,15 +279,6 @@ function renderServices(state) {
       const again = button('Logg inn på nytt', 'text-button', () => openLogin(source));
       again.disabled = busy;
       controls.append(again);
-    }
-    if (
-      source.setup === 'file' &&
-      !source.has_session &&
-      !['setup_required', 'unavailable'].includes(source.state)
-    ) {
-      const other = button('Velg en annen Google-fil', 'text-button', () => selectFile(source.id));
-      other.disabled = busy;
-      controls.append(other);
     }
     top.append(info, controls);
     row.append(top);
@@ -602,30 +568,6 @@ byId('continue-job').addEventListener('click', () =>
 byId('cancel-job').addEventListener('click', () =>
   perform('/api/job', { id: currentState.job.id, action: 'cancel' }),
 );
-byId('client-file').addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  if (file.size > 1024 * 1024) {
-    error('Filen er for stor. Velg JSON-filen du lastet ned fra Google.');
-    return;
-  }
-  let content;
-  try {
-    content = await file.text();
-  } catch (exception) {
-    error('Filen kunne ikke leses. Prøv å velge den på nytt.');
-    return;
-  }
-  error('');
-  showInfo('');
-  try {
-    await api('/api/client-file', { source: fileSource, content });
-    showInfo('Google-filen er lagret. Velg «Logg inn» for å ta den i bruk.');
-  } catch (exception) {
-    error(exception.message);
-  }
-  await refresh();
-});
 refresh();
 runDoctor();
 setInterval(refresh, 1200);

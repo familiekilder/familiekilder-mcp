@@ -10,8 +10,11 @@ assistenten lese fra tjenestene du bruker, med din egen innlogging.
 egen kalenderkobling.*
 
 <!-- Tjenestelisten er hentet fra sources.REGISTRY. -->
-Støtter Vigilo, Skolemelding, Spond, Hoopit, IST Home, Flyt (barnehage) og Gmail.
+Støtter Vigilo, Skolemelding, Spond, Hoopit, IST Home og Flyt (barnehage).
 Vi jobber med støtte for MyKid og for skole og SFO i Flyt.
+
+Gmail er ikke med: Claude og ChatGPT har sine egne Gmail-tilkoblinger. Slå på
+den i assistenten, så kan den bruke e-posten sammen med tjenestene her.
 
 Savner du en tjeneste? Opprett en sak på GitHub med navnet på tjenesten,
 eller send en pull request hvis du vil bidra med en kobling.
@@ -40,14 +43,14 @@ lager programmet. Vi har ingen server, og programmet sender oss ingenting.
   med skrivebord. Windows og Linux er nytt; se under.
 - **Innlogginger.** Du logger alltid inn på datamaskinen. På Fly.io flytter du
   innloggingene til serveren din etterpå.
-- **Prøveordning.** Oppsettet på Fly.io er nytt. Spond er prøvd der. Hoopit,
-  tjenestene med BankID-innlogging og Gmail er ikke prøvd der ennå.
+- **Prøveordning.** Oppsettet på Fly.io er nytt. Spond er prøvd der. Hoopit og
+  tjenestene med BankID-innlogging er ikke prøvd der ennå.
 - **ChatGPT.** I nettleseren og på mobilen trenger du et abonnement som
   tillater egne MCP-servere. Det er prøvd med Pro.
 
 Uansett hvor serveren kjører, kan den bare lese. Det assistenten leser, sendes
-til AI-leverandøren du bruker. Gmail og Hoopit bruker tjenestens offisielle API.
-Hoopit kobles til med et personlig tilgangstoken du lager selv; se
+til AI-leverandøren du bruker. Hoopit bruker tjenestens offisielle API og kobles
+til med et personlig tilgangstoken du lager selv; se
 [Hoopit](docs/hoopit-ingestion.md). De øvrige koblingene er uoffisielle.
 
 ## Kom i gang på datamaskinen

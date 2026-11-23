@@ -29,8 +29,8 @@ def flat(text: str) -> str:
 
 
 def unofficial_sources():
-    """Services read without an official API: not Google sign-in, not a personal access token."""
-    return [source for source in REGISTRY.values() if source.login not in {"google", "token"}]
+    """Services read without an official API, that is without a personal access token."""
+    return [source for source in REGISTRY.values() if source.login != "token"]
 
 
 def quoted_prompts(text: str) -> list[str]:

@@ -12,6 +12,18 @@ from .private_state import (
 )
 
 CATEGORIES = ("messages", "absence", "participation")
+# Services this package no longer offers (see CHANGELOG.md). A stored
+# configuration may still name one; it is left out when the configuration is
+# loaded, so the server still starts, and dropped at the next save.
+RETIRED_SOURCES = frozenset({"gmail"})
+
+
+def _refuse_writes(name, writes):
+    from .sources import REGISTRY
+
+    source = REGISTRY.get(name)
+    if writes and source is not None and not source.write_permissions:
+        raise FamiliekilderError(f"{source.label} støtter bare lesetilgang")
 
 
 @dataclass(frozen=True)
@@ -44,6 +56,9 @@ class Config:
         ):
             raise FamiliekilderError("Ugyldig MCP-konfigurasjon")
         services = value["services"]
+        if isinstance(services, dict):
+            services = {name: settings for name, settings in services.items()
+                        if name in SOURCES or name not in RETIRED_SOURCES}
         if not isinstance(services, dict) or set(services) - set(SOURCES):
             raise FamiliekilderError("Ukjent tjeneste i MCP-konfigurasjonen")
         normalized = {}
@@ -53,14 +68,13 @@ class Config:
             writes = settings["write"]
             if not isinstance(writes, list) or any(x not in CATEGORIES for x in writes):
                 raise FamiliekilderError("Ukjent skriverettighet")
-            if name == "gmail" and writes:
-                raise FamiliekilderError("Gmail støtter bare lesetilgang")
+            _refuse_writes(name, writes)
             normalized[name] = frozenset(writes)
         return cls(root, normalized, persistent=True)
 
     def save(self):
-        if self.services.get("gmail"):
-            raise FamiliekilderError("Gmail støtter bare lesetilgang")
+        for name, writes in self.services.items():
+            _refuse_writes(name, writes)
         self.root.mkdir(parents=True, exist_ok=True)
         ensure_private_directory(self.private)
         atomic_write_private_json(

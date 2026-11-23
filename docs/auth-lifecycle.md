@@ -202,8 +202,8 @@ lesetilgang kontrolleres med et autorisert leseoppslag før en slik konklusjon.
 ## Flytting til egen vert
 
 [Øktflytting](alltid-pa.md#når-en-innlogging-må-fornyes) sperrer lokal
-fornyelse før pakken sendes. Gmail omfattes også: både eierbinding og
-flyttemerke kontrolleres under kildelås før token brukes eller fornyes.
+fornyelse før pakken sendes. Både eierbinding og flyttemerke kontrolleres under
+kildelås før token brukes eller fornyes.
 Verten lagrer eierbindingen atomisk før importerte øktfiler skrives. En
 vertsøkt uten eierbinding avvises, også når installasjonshemmeligheten mangler
 på en kopiert disk med vertens tilstand. En ny vellykket

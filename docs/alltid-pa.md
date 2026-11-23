@@ -5,8 +5,8 @@ over stdio er fortsatt standard. Funksjonen er med fra 1.0.0rc3. En første ekte
 Fly.io 17. og 18. november 2026 bekreftet utrulling, stopp og start ved kall,
 flytting av innloggingen for Spond, lesing på verten og tilkobling
 fra Claude og ChatGPT på nett og mobil og fra Codex CLI, en planlagt
-skykjøring og Word-vedlegg. Kildene med BankID-innlogging, Hoopit, Gmail med
-gyldig innlogging og drift over tid er ennå ikke prøvd på ekte vert. Se
+skykjøring og Word-vedlegg. Kildene med BankID-innlogging, Hoopit og drift over
+tid er ennå ikke prøvd på ekte vert. Se
 [Prøvd på ekte vert](#prøvd-på-ekte-vert).
 
 Verten kjører samme lesende MCP-server i en Linux-container. Den henter bare
@@ -52,7 +52,7 @@ OAuth er et vern, ikke en garanti mot feil i kode, vert eller assistent.
 
 Kjør kommandoene under fra kildeutsjekkingen, med 1.0.0rc3 eller nyere.
 Installer først etter [oppsettsveiledningen](kom-i-gang.md), og logg inn i den
-lokale veiviseren. Google-klienten for Gmail følger samme flytting som økten.
+lokale veiviseren.
 
 1. Installer `flyctl` etter [Flys veiledning](https://fly.io/docs/flyctl/install/),
    på Mac for eksempel med `brew install flyctl`.
@@ -256,8 +256,9 @@ Dette virket:
   om tillatelse og svarte riktig. Ingen av appene ba om ny innlogging.
 - **Planlagt skykjøring.** En planlagt oppgave («routine») i Claude Code på
   nett, med bare denne koblingen, ble satt til å kjøre én gang noen minutter
-  frem i tid. Den startet i Anthropics sky til avtalt tid, kalte
-  `family_connections`, `spond_list_items` og `gmail_search`, og skrev en oppsummering. Kjøringen tok 35 sekunder og
+  frem i tid. Den startet i Anthropics sky til avtalt tid, kalte blant annet
+  `family_connections` og `spond_list_items`, og skrev en oppsummering.
+  Kjøringen tok 35 sekunder og
   brukte ikke Macen. Macen var likevel på, så en kjøring med Macen avslått er
   ikke prøvd bokstavelig.
 - **Planlagt oppgave i ChatGPT.** I en samtale med koblingen valgt ble ChatGPT
@@ -266,12 +267,10 @@ Dette virket:
   avtalt tid mens Macens skjerm var låst, og svaret var riktig. ChatGPT viser
   ikke verktøykall for en planlagt kjøring, men verten registrerte en lesing
   fra Spond i samme minutt som svaret er stemplet.
-- **Flytting av en utløpt innlogging.** Gmail ble flyttet med
-  `remote move ADRESSE --source gmail`. Google-innloggingen viste seg å være
-  utløpt hos Google. Verten svarte da «Gmail-tilgangen må fornyes med
-  Google-innlogging» på `gmail_search`, og de andre kildene virket som før.
-  Flyttingen tar også med Google-klienten. Ny innlogging på datamaskinen
-  krever derfor Google-filen på nytt; ta vare på den.
+- **Flytting av en utløpt innlogging.** En innlogging som var utløpt hos
+  tjenesten, ble flyttet med `remote move ADRESSE --source TJENESTE`. Verten
+  svarte da at tilgangen måtte fornyes, og de andre kildene virket som før.
+  Flyttingen tar også med tjenestens klientoppsett.
 - **Word-vedlegg.** Se [Word-vedlegg på verten](#word-vedlegg-på-verten).
   Uten vekselminne gikk maskinen tom for minne. `deploy fly --word` gir den
   derfor vekselminne.
@@ -290,7 +289,7 @@ Dette er ennå ikke prøvd:
 - Claude og ChatGPT på Android.
 - Planlagte oppgaver i Claude Cowork.
 - Kilder som logger inn med BankID (Vigilo, Skolemelding, IST Home og Flyt)
-  på verten, og Gmail med en gyldig innlogging. Bare Spond leses der nå.
+  på verten. Bare Spond leses der nå.
 - Hoopit med personlig tilgangstoken på verten.
 - Ekte Word-vedlegg fra en kilde.
 - Fornyelse over dager og uker, og hva verten faktisk koster per måned.

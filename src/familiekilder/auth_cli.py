@@ -17,11 +17,11 @@ from .sources import REGISTRY
 
 API_AUTH_SOURCES = SOURCES
 _SOURCE_LABELS = {name: source.label for name, source in REGISTRY.items()}
-_AUTH_CAPABILITIES = {
-    name: source.auth_commands | {"health", "maintain"}
-    for name, source in REGISTRY.items()
-    if source.auth_commands
-}
+
+
+def _auth_capabilities(source: str) -> frozenset[str]:
+    commands = REGISTRY[source].auth_commands
+    return commands | {"health", "maintain"} if commands else frozenset()
 
 
 def _json(value: Any) -> None:
@@ -130,15 +130,16 @@ def _browser_option(args: argparse.Namespace) -> dict[str, str]:
 
 
 def _run_generic_auth(args: argparse.Namespace, root: Path | None) -> int:
-    label = _SOURCE_LABELS[args.source]
-    if args.auth_command not in _AUTH_CAPABILITIES[args.source]:
-        if "token" in _AUTH_CAPABILITIES[args.source]:
+    label = REGISTRY[args.source].label
+    capabilities = _auth_capabilities(args.source)
+    if args.auth_command not in capabilities:
+        if "token" in capabilities:
             detail = (
                 "koble til med et personlig tilgangstoken: "
                 f"«{args.program.name} auth {args.source} token»"
             )
         elif (args.auth_command == "login"
-                and "browser-bootstrap" in _AUTH_CAPABILITIES[args.source]):
+                and "browser-bootstrap" in capabilities):
             detail = "bruk browser-bootstrap med en isolert, midlertidig nettleserprofil"
         else:
             detail = "kommandoen støttes ikke for denne kilden"

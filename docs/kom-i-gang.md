@@ -86,8 +86,6 @@ Innlogging i nettleser åpner en isolert, midlertidig profil i Brave, Google
 Chrome eller Microsoft Edge. Profilen slettes etterpå, og den bruker ikke
 bokmerker, innlogginger eller utvidelser fra din vanlige nettleser. Programmet
 styrer vinduet gjennom en privat forbindelse, aldri gjennom en nettverksport.
-Gmail er unntaket: Google-innloggingen åpnes i den vanlige nettleseren din; se
-[Gmail](gmail.md).
 
 Programmet bruker bare en nettleser som er installert fra leverandøren, og
 kontrollerer den før hver start. En nettleser som ikke består kontrollen,
@@ -168,10 +166,9 @@ denne maskinen.
 
 1. Velg «Logg inn» på tjenestene du bruker. Vigilo, Skolemelding, Spond og
    IST Home har innebygd oppsett, så du trenger ingen fil. Hoopit kobles til
-   med et token du lager selv; se punkt 2. Flyt spør om kommune. Gmail trenger din egen Google-klient; velg den med «Velg
-   Google-fil». Valgte du feil kommune eller fil, kan du velge på nytt så lenge
-   du ikke har logget inn: kommunen i innloggingsdialogen, Google-filen med
-   «Velg en annen Google-fil». Se [klientoppsett](klientoppsett.md).
+   med et token du lager selv; se punkt 2. Flyt spør om kommune. Valgte du feil
+   kommune, kan du velge en annen i innloggingsdialogen så lenge du ikke har
+   logget inn. Se [klientoppsett](klientoppsett.md).
 2. Logg inn i det separate nettleservinduet. BankID gjør du selv. For Spond
    merker veiviseren selv når du er logget inn, og lagrer innloggingen. Skjer
    det ikke noe når Spond er ferdig lastet, trykker du «Jeg er logget inn».
@@ -232,7 +229,6 @@ familiekilder-mcp auth vigilo browser-login        # Vigilo, Skolemelding, IST H
 familiekilder-mcp auth spond browser-bootstrap     # Spond
 familiekilder-mcp auth hoopit token                # Hoopit: lim inn tokenet, det vises ikke
 familiekilder-mcp auth spond import-session --session-file /sti/til/.private/spond-økt.json
-familiekilder-mcp auth gmail login                 # se docs/gmail.md
 ```
 
 `auth spond browser-bootstrap` fortsetter av seg selv når du er logget inn i
@@ -282,8 +278,7 @@ claude mcp add familiekilder-mcp -- /ABSOLUTT/STI/familiekilder-mcp/.private/ven
 Andre MCP-klienter tar det samme som `command` og `args` i sin konfigurasjon.
 Verktøyet `family_connections` viser agenten hvilke tjenester som er slått på,
 og hver tjeneste får `<tjeneste>_list_items`, `<tjeneste>_get_item` og
-`<tjeneste>_read_attachment` (Gmail har `gmail_search` i stedet for listen), pluss
-tjenestens øvrige leseverktøy.
+`<tjeneste>_read_attachment`, pluss tjenestens øvrige leseverktøy.
 
 ## Klientkonfigurasjon per tjeneste
 
@@ -294,8 +289,7 @@ om hjelp.
 Vigilo, Skolemelding, Spond og IST Home har innebygd appidentitet, som
 veiviseren legger inn når tjenesten mangler oppsett. Appidentiteten er lik for
 alle brukere av leverandørens offisielle app og gir ikke tilgang til noen
-konto. Flyt spør om kommune, og Gmail bruker din egen Google OAuth-klient av
-typen Desktop app; se [Gmail](gmail.md).
+konto. Flyt spør om kommune.
 
 Har du et eget klientoppsett, importerer du det for én tjeneste om gangen. Et
 importert oppsett erstatter det som er lagret, også det innebygde:
@@ -336,9 +330,8 @@ sendes til AI-leverandøren du har valgt. Assistenten står for oversettelse og
 forklaring; denne pakken gir den tilgang til kildene.
 
 Koblingene bruker tjenestenes egne API-er med din innlogging, men er ikke
-godkjent av tjenestene. Gmail bruker Googles offisielle API med din egen
-OAuth-klient. Du må følge tjenestenes vilkår. Endringer hos en leverandør kan
-gjøre at en kobling slutter å virke.
+godkjent av tjenestene. Du må følge tjenestenes vilkår. Endringer hos en
+leverandør kan gjøre at en kobling slutter å virke.
 
 ## Begrensninger
 
@@ -348,7 +341,8 @@ gjøre at en kobling slutter å virke.
 - Hentede meldinger og vedlegg mellomlagres privat i opptil sju dager. Trafikken
   er begrenset lokalt til 1 000 forespørsler per time og 3 000 per døgn per
   tjeneste; se [mellomlagring](read-cache.md).
-- Gmail kan bare lese, og bare med målrettede søk; se [Gmail](gmail.md).
+- Serveren leser ikke e-post. Bruk assistentens egen Gmail-tilkobling; Claude
+  og ChatGPT har hver sin.
 - MCP-serveren tilbyr bare leseverktøy. Den sender ikke meldinger, melder
   fravær eller svarer på deltakelse.
 - Hvor lenge en innlogging varer, bestemmer tjenesten. Det er ikke kjent for
@@ -363,7 +357,6 @@ gjøre at en kobling slutter å virke.
 | [Funksjonsmatrise](service-capabilities.md) | Lesing per tjeneste og grenser; intern kode for skriving er merket separat |
 | [Fornyelse og levetid](auth-lifecycle.md) | Tokenfornyelse, lagring og hva som er målt |
 | [Profiler og passord](personal-profiles.md) | Datarot, profiler og nøkkelring |
-| [Gmail](gmail.md) | Søk, tempo og oppsett av egen OAuth-klient |
 | [Mellomlagring](read-cache.md) | Cache, ferskhet og trafikkbudsjett |
 | [Hoopit](hoopit-ingestion.md) | Token, kall, versjoner og grenser |
 | [Flyt](flyt.md) | Kommunevalg, innlogging, ruter og grenser |

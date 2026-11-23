@@ -8,13 +8,6 @@ from .sources import REGISTRY
 
 def estimate(root, source, *, at=None):
     kind = REGISTRY[source].session_estimate if source in REGISTRY else "unknown"
-    if kind == "google":
-        return {
-            "kind": "long_lived",
-            "basis": "google_refresh_grant",
-            "label": "Innloggingen fornyes vanligvis automatisk",
-            "progress": None,
-        }
     now = time.time() if at is None else at
     health = report(root, source, at=now)
     if kind == "long_lived":

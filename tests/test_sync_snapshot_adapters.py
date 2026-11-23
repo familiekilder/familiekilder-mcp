@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from familiekilder import gmail, hoopit, ist_home, skolemelding, spond
+from familiekilder import hoopit, ist_home, skolemelding, spond
 from familiekilder import live_spond_chat, live_vigilo_reader
 from familiekilder.api_transport import ApiHTTPError
 from familiekilder.private_state import atomic_write_private_json
@@ -17,8 +17,8 @@ class SyncSnapshotAdapterTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        for source in ('spond', 'skolemelding', 'hoopit', 'gmail', 'ist-home', 'vigilo'):
-            filename = 'gmail.json' if source == 'gmail' else source + '-session.json'
+        for source in ('spond', 'skolemelding', 'hoopit', 'ist-home', 'vigilo'):
+            filename = source + '-session.json'
             atomic_write_private_json(self.root / '.private/credentials' / filename,
                                       {'subject': 'synthetic-' + source})
         self.snapshot = SyncSnapshot('synthetic-job')
@@ -60,15 +60,6 @@ class SyncSnapshotAdapterTests(unittest.TestCase):
             for _ in range(2):
                 client.get('posts', {'page': 1})
             client.get('posts', {'page': 2})
-        self.assertEqual(client._get.call_count, 2)
-
-    def test_gmail_exact_path_and_params_reuse_before_live_loader(self):
-        client = object.__new__(gmail.Client)
-        client.root, client._get = self.root, Mock(return_value={'id': 'message-1'})
-        with snapshot_scope(self.snapshot, self.root):
-            client.get('/messages/message-1', format='full')
-            client.get('/messages/message-1', format='full')
-            client.get('/messages/message-1', format='metadata')
         self.assertEqual(client._get.call_count, 2)
 
     def test_vigilo_reuses_reads_before_transport_and_write_scope_bypasses(self):

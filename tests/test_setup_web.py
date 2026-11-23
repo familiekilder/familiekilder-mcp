@@ -15,7 +15,7 @@ from familiekilder.connection_status import auth_module
 from familiekilder.setup_service import Job, SetupError, SetupService
 from familiekilder.live_config import Config
 from familiekilder.private_state import (
-    atomic_write_private_bytes, atomic_write_private_json, credential_path, ensure_private_directory,
+    atomic_write_private_bytes, atomic_write_private_json, ensure_private_directory,
 )
 from familiekilder.setup_web import SetupServer
 from familiekilder.source_adapter import SourceUnavailable
@@ -23,13 +23,6 @@ from familiekilder.sources import REGISTRY
 from familiekilder_testing.flyt import FakeMunicipalityTransport
 
 AUTOMATIC_SOURCES = [source for source in REGISTRY if default_client_config(source) is not None]
-
-
-def google_file(name):
-    # An invented desktop client in the shape Google's download has.
-    return json.dumps({"installed": {
-        "client_id": f"{name}.apps.googleusercontent.com", "client_secret": f"{name}-secret",
-    }})
 
 
 def store_fake_session(path):
@@ -102,7 +95,7 @@ class SetupHttpTests(SetupServerCase):
         # A source whose default is withdrawn is shown as unavailable.
         expected = {source: "unavailable" for source in services}
         expected.update({source: "automatic" for source in AUTOMATIC_SOURCES})
-        expected.update({"flyt": "municipality", "gmail": "file", "hoopit": "token"})
+        expected.update({"flyt": "municipality", "hoopit": "token"})
         self.assertEqual({source: row["setup"] for source, row in services.items()}, expected)
         self.assertIn("spond", AUTOMATIC_SOURCES)
         for row in services.values():
@@ -211,27 +204,14 @@ class SetupHttpTests(SetupServerCase):
         self.assertTrue(all("Get-AuthenticodeSignature" not in call[-1] for call in system.calls))
         self.assertFalse(self.root.exists())
 
-    def test_upload_failure_is_sanitized_and_temporary_file_removed(self):
-        with patch("familiekilder.setup_service.auth_module") as module:
-            module.return_value.session_path.return_value.exists.return_value = False
-            module.return_value.configure_client.side_effect = ValueError("private-client-content")
-            status, _, body = self.request("/api/client-file", method="POST", value={"source": "gmail", "content": '{"fictional": true}'})
-        self.assertEqual(status, 400)
-        self.assertNotIn(b"private-client-content", body)
-        self.assertEqual(list((self.root / ".private/setup-imports").iterdir()), [])
-
-    def test_client_file_is_only_for_services_set_up_with_a_file(self):
-        content = json.dumps({"installed": {
-            "client_id": "fictional-desktop.apps.googleusercontent.com", "client_secret": "fictional-secret",
-        }})
-        for source in [*AUTOMATIC_SOURCES, "flyt"]:
+    def test_the_wizard_takes_no_client_files(self):
+        content = json.dumps({"client": "fictional"})
+        for source in REGISTRY:
             with self.subTest(source=source):
                 status, _, _ = self.request("/api/client-file", method="POST", value={"source": source, "content": content})
-                self.assertEqual(status, 400)
-                self.assertFalse(auth_module(source).auth_status(self.root)["configured"])
-        status, _, _ = self.request("/api/client-file", method="POST", value={"source": "gmail", "content": content})
-        self.assertEqual(status, 200)
-        self.assertTrue(auth_module("gmail").auth_status(self.root)["configured"])
+                self.assertEqual(status, 404)
+        self.assertFalse((self.root / ".private/credentials").exists())
+        self.assertEqual(self.request("/help/client")[0], 404)
 
     def test_ist_home_app_import_is_no_longer_a_wizard_action(self):
         status, _, body = self.request("/api/start", method="POST", value={"action": "ist-client"})
@@ -764,52 +744,6 @@ class FlytSetupTests(SetupServerCase):
             with self.subTest(headers=headers):
                 self.assertEqual(self.request("/api/flyt-municipalities", headers=headers)[0], 403)
         self.assertEqual(self.transport.calls, [])
-
-
-class GmailFileTests(SetupServerCase):
-    """Gmail is set up with the user's own Google file."""
-
-    def import_file(self, content):
-        return self.request("/api/client-file", method="POST", value={"source": "gmail", "content": content})
-
-    def stored_client(self):
-        return json.loads(credential_path(self.root, "gmail-client.json").read_bytes())
-
-    def test_another_google_file_replaces_the_stored_one_without_a_session(self):
-        self.assertEqual(self.import_file(google_file("fictional-first"))[0], 200)
-        self.assertEqual(self.import_file(google_file("fictional-second"))[0], 200)
-        self.assertEqual(self.stored_client()["client_id"], "fictional-second.apps.googleusercontent.com")
-        self.assertEqual(list((self.root / ".private/setup-imports").iterdir()), [])
-
-    def test_an_invalid_new_google_file_keeps_the_stored_one(self):
-        self.assertEqual(self.import_file(google_file("fictional-first"))[0], 200)
-        path = credential_path(self.root, "gmail-client.json")
-        before = path.read_bytes()
-        web_client = json.dumps({"web": {
-            "client_id": "fictional-web.apps.googleusercontent.com", "client_secret": "fictional-web-secret",
-        }})
-        for content in ("{not json", "[]", json.dumps({"installed": {"client_id": "x"}}), web_client):
-            with self.subTest(content=content):
-                status, _, body = self.import_file(content)
-                self.assertEqual(status, 400)
-                self.assertIn("Filen kunne ikke brukes", json.loads(body)["error"])
-                self.assertEqual(path.read_bytes(), before)
-
-    def test_the_google_file_is_not_replaced_while_gmail_has_a_session(self):
-        self.assertEqual(self.import_file(google_file("fictional-first"))[0], 200)
-        path = credential_path(self.root, "gmail-client.json")
-        before = path.read_bytes()
-        store_fake_session(credential_path(self.root, "gmail.json"))
-        status, _, body = self.import_file(google_file("fictional-second"))
-        self.assertEqual(status, 400)
-        self.assertEqual(
-            json.loads(body)["error"],
-            "Gmail har en lagret innlogging, så filen byttes ikke. "
-            "Logg ut med «familiekilder-mcp auth gmail logout» først.",
-        )
-        self.assertEqual(path.read_bytes(), before)
-        rows = {row["id"]: row for row in self.service.state()["services"]}
-        self.assertTrue(rows["gmail"]["has_session"])
 
 
 if __name__ == "__main__":

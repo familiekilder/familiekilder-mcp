@@ -15,10 +15,10 @@ import time
 from .core import project_paths
 from .private_lock import private_source_lock
 from .private_state import atomic_write_private_json, read_private_json
-from .sources import REGISTRY
+from .sources import SourceNames
 
 _ACTIVE = ContextVar("familiekilder_live_traffic", default=None)
-SOURCES = frozenset(name for name, source in REGISTRY.items() if source.paced)
+SOURCES = SourceNames(lambda source: source.paced)
 MIN_INTERVAL = 0.25  # Local pacing policy, not a claimed provider quota.
 MAX_REQUESTS = 1000
 

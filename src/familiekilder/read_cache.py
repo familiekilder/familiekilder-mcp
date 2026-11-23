@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from .private_lock import private_named_lock, private_source_lock
 from .private_state import ensure_private_directory, read_private_json, atomic_write_private_json, PrivateStateError
 from .live_config import SOURCES
+from .sources import REGISTRY, session_file
 
 RETENTION = 7 * 86400
 DETAIL_FRESHNESS = 300
@@ -41,10 +42,10 @@ def account_scope(root, source):
     """Hash local account/client identity; never persist tokens in the cache.
 
     Missing credentials disable reuse. Stable subjects survive token rotation;
-    Gmail, which does not store a subject, binds to the refresh grant instead.
+    a login that stores no subject binds to its refresh grant instead.
     """
     private = root / '.private' / 'credentials'
-    path = private / ('gmail.json' if source == 'gmail' else source + '-session.json')
+    path = private / (session_file(source) if source in REGISTRY else source + '-session.json')
     if not path.exists() and not path.is_symlink():
         return None
     try:

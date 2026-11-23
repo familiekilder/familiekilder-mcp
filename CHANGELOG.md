@@ -2,6 +2,16 @@
 
 ## Ikke utgitt
 
+- Gmail er fjernet. Serveren brukes med Claude eller ChatGPT, og begge har
+  allerede sin egen Gmail-tilkobling. Da trenger ikke serveren en til. Slå på
+  Gmail i assistenten i stedet, så kan den bruke e-posten sammen med
+  tjenestene her. Verktøyene `gmail_search`, `gmail_get_item` og
+  `gmail_read_attachment`, kommandoene `auth gmail …` og valget av Google-fil
+  i veiviseren er borte. Står Gmail i en lagret konfigurasjon, hoppes den over,
+  så serveren starter som før. Har du logget inn i Gmail, ligger filene
+  `gmail.json`, `gmail-client.json` og `gmail-traffic.json` igjen i
+  `.private/credentials`; de brukes ikke lenger, og du kan slette dem.
+  Tilgangen kan trekkes tilbake i Google-kontoen din.
 - Spond-innloggingen fortsetter nå av seg selv når du er logget inn i
   nettleservinduet, både i veiviseren og med
   `familiekilder-mcp auth spond browser-bootstrap`. Programmet ser bare etter
@@ -86,6 +96,11 @@
   ChatGPT på nett er prøvd mot en ekte vert (Pro-konto, 18. november 2026),
   og at kommandoene for tilbakekalling på Fly trenger en maskin som er i
   gang. Ingen kode er endret.
+- Internt: et program som bygger på pakken, kan legge til egne tjenester med
+  `sources.register`, og `Source` har fått feltene `listable`,
+  `write_permissions`, `session_file`, `auth_journal` og `read_lock_wait`.
+  Lister over tjenester i modulene leser nå registeret hver gang de brukes.
+  Se [tjenester utenfor pakken](docs/adding-a-service.md#tjenester-utenfor-pakken-internt-api).
 
 ## 1.0.0rc3
 

@@ -26,7 +26,7 @@ class WebScriptTests(unittest.TestCase):
             'letters': {s.name: s.letter for s in REGISTRY.values()},
             'descriptions': {s.name: s.description for s in REGISTRY.values()},
             'kinds': {s.name: s.kind for s in REGISTRY.values()},
-            'readOnly': ['flyt', 'gmail'],
+            'readOnly': ['flyt'],
         })
 
     def test_generated_script_names_no_source_file(self):

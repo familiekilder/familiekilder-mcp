@@ -52,7 +52,7 @@ from .private_state import (
     read_private_json,
     remove_private_file,
 )
-from .sources import REGISTRY
+from .sources import REGISTRY, session_file
 
 FORMAT = "familiekilder-move"
 PAYLOAD_FORMAT = "familiekilder-move-payload"
@@ -96,7 +96,7 @@ def _canonical(value: Any) -> bytes:
 
 
 def session_filename(source: str) -> str:
-    return f"{source}.json" if REGISTRY[source].login == "google" else f"{source}-session.json"
+    return session_file(source)
 
 
 def marker_path(root: Path, source: str) -> Path:

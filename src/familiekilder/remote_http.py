@@ -72,7 +72,7 @@ class LiveCatalogServer(MCPServer):
 
     def _sync_catalog(self):
         from .live_actions import register_source_context_reads
-        from .source_server import register_gmail_search, register_source_reads
+        from .source_server import register_source_reads
 
         enabled = self.runtime.config.services
         for source in list(self._source_tools):
@@ -85,8 +85,6 @@ class LiveCatalogServer(MCPServer):
             before = {tool.name for tool in self._tool_manager.list_tools()}
             register_source_reads(self, self.runtime, source)
             register_source_context_reads(self, self.runtime, source)
-            if source == 'gmail':
-                register_gmail_search(self, self.runtime)
             self._source_tools[source] = {
                 tool.name for tool in self._tool_manager.list_tools()
             } - before

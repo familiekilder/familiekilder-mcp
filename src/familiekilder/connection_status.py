@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import FamiliekilderError
-from .source_adapter import AUTH_MODULES
+from .source_adapter import auth_module_name
 
 # Helpers that replace any failure with their own fixed error.
 _WRAPPERS = frozenset({"safe_call", "_safe_call"})
@@ -20,7 +20,7 @@ _WRAPPERS = frozenset({"safe_call", "_safe_call"})
 
 def auth_module(source: str) -> Any:
     try:
-        module_name = AUTH_MODULES[source]
+        module_name = auth_module_name(source)
     except KeyError:
         raise FamiliekilderError(f"{source!r} har ingen lokal API-autentisering") from None
     return importlib.import_module(module_name)

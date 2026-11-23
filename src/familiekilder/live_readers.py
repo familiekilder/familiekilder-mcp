@@ -149,12 +149,12 @@ def ref_item(item, ref):
 def provider(root, source):
     """Cross-process serialization includes token rotation and provider pacing."""
     from .live_traffic import traffic_scope
-    from .gmail_traffic import READ_LOCK_TIMEOUT
 
-    # Parallel Gmail reads queue briefly instead of failing on normal contention.
+    # Some sources' parallel reads queue briefly instead of failing on normal
+    # contention (`Source.read_lock_wait`).
+    wait = REGISTRY[source].read_lock_wait if source in REGISTRY else None
     with private_source_lock(
-        root, source, wait=source == "gmail",
-        timeout=READ_LOCK_TIMEOUT if source == "gmail" else None,
+        root, source, wait=wait is not None, timeout=wait,
     ), traffic_scope(root, source):
         with _reader(source).connect(root) as (m, client):
             yield m, client
@@ -169,12 +169,6 @@ def read_scope(root, sources):
             if scope is not None:
                 stack.enter_context(scope(root))
         yield
-
-
-def search_gmail_live(root, query, limit, page_token=None, include_spam_trash=False, *, budget=None):
-    """`budget` is the caller's optional read allowance; see `gmail.Client.search`."""
-    with provider(root, "gmail") as (_, client):
-        return client.search(query, limit, page_token, include_spam_trash, budget=budget)
 
 
 def _reader(source):
@@ -204,10 +198,18 @@ def checked_detail(item, canonical, enabled):
     return item
 
 
+def require_listable(source):
+    """Refuse a broad listing of a source that is searched instead (`Source.listable`)."""
+    if source in REGISTRY and not REGISTRY[source].listable:
+        search = source.replace("-", "_") + "_search"
+        raise FamiliekilderError(
+            f"{REGISTRY[source].label} støtter målrettet {search}, ikke brede listeoppslag"
+        )
+
+
 def list_live(root, source, since, *, include_detail_hash=False):
     """Bounded provider traversal, preserving existing coverage and hard caps."""
-    if source == "gmail":
-        raise FamiliekilderError("Gmail støtter målrettet gmail_search, ikke brede listeoppslag")
+    require_listable(source)
     with provider(root, source) as (m, c):
         return _reader(source).list_items(root, m, c, since, include_detail_hash=include_detail_hash)
 

@@ -44,7 +44,6 @@ class ClientDefaultsTests(unittest.TestCase):
         self.assertIn("spond", sources)
         self.assertTrue(set(sources) <= set(REGISTRY), sources)
         self.assertNotIn("flyt", sources)
-        self.assertNotIn("gmail", sources)
 
     def test_every_default_passes_its_own_validation_in_an_empty_root(self):
         for source in shipped_sources():
@@ -66,7 +65,7 @@ class ClientDefaultsTests(unittest.TestCase):
                 self.assertEqual(set(default_client_config(source)) - allowed, set())
 
     def test_sources_without_built_in_setup_give_none(self):
-        for source in ("flyt", "gmail", "unknown-source", "", None, 7):
+        for source in ("flyt", "unknown-source", "", None, 7):
             with self.subTest(source=source):
                 self.assertIsNone(default_client_config(source))
 

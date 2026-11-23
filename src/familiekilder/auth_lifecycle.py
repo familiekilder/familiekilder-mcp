@@ -20,7 +20,7 @@ import time
 
 from .core import FamiliekilderError, project_paths
 from .private_lock import private_source_lock
-from .sources import REGISTRY
+from .sources import REGISTRY, SourceNames, session_file
 from .private_state import (
     atomic_write_private_json,
     credential_path,
@@ -29,7 +29,7 @@ from .private_state import (
     PrivateStateError,
 )
 
-SOURCES = tuple(name for name, source in REGISTRY.items() if source.login != 'google')
+SOURCES = SourceNames(lambda source: source.auth_journal)
 # A token can reach us milliseconds before the second it is stamped with. One such
 # rejection would otherwise block the grant for good, so tolerate ordinary clock skew.
 NOT_BEFORE_LEEWAY_SECONDS = 60
@@ -67,7 +67,7 @@ EVENTS = {
 
 
 def _path(root, source, suffix):
-    if source not in SOURCES and not (source == 'gmail' and suffix in {'auth-owner', 'moved'}):
+    if source not in SOURCES and not (source in REGISTRY and suffix in {'auth-owner', 'moved'}):
         raise FamiliekilderError('Ukjent auth-kilde')
     return credential_path(root, f'{source}-{suffix}.json')
 
@@ -148,7 +148,7 @@ def require_owner(root, source):
     old = _read(path)
     if not old:
         hosted = installation or (project_paths(root).private / 'remote').exists()
-        session = 'gmail.json' if source == 'gmail' else f'{source}-session.json'
+        session = session_file(source)
         if sys.platform != 'darwin' and hosted and credential_path(root, session).exists():
             raise FamiliekilderError(
                 'Innloggingen på verten mangler eierbinding; flytt den på nytt fra datamaskinen'

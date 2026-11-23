@@ -34,8 +34,8 @@ under krever per tjeneste.
 ikke lokal 1.0. Den første prøven på en ekte Fly-vert bekreftet utrulling,
 flytting av innloggingen for Spond, tilkobling fra Claude og
 ChatGPT på nett og iPhone og fra Codex CLI, en planlagt skykjøring og
-Word-vedlegg. Kildene med BankID-innlogging, Gmail med gyldig innlogging og
-drift over tid må fortsatt bekreftes særskilt; se
+Word-vedlegg. Kildene med BankID-innlogging og drift over tid må fortsatt
+bekreftes særskilt; se
 [Prøvd på ekte vert](alltid-pa.md#prøvd-på-ekte-vert).
 
 ## Før stabil utgivelse
@@ -45,8 +45,8 @@ drift over tid må fortsatt bekreftes særskilt; se
 - En ny bruker må kunne skaffe og importere klientkonfigurasjon uten tilgang
   til utviklerens maskin eller private oppsett. Det er løst for Vigilo,
   Skolemelding, Spond og IST Home, som har innebygd appidentitet, for Flyt, der
-  veiviseren spør om kommune, og for Hoopit, der brukeren lager et token selv. Gmail krever brukerens egen
-  Google-klient. Se [klientoppsett](klientoppsett.md).
+  veiviseren spør om kommune, og for Hoopit, der brukeren lager et token selv.
+  Se [klientoppsett](klientoppsett.md).
 - Innlogging, liste, meldingsdetalj og ett vedlegg må bekreftes per tjeneste som
   skal omtales som klar. Bruk egen konto, eller en uttrykkelig avtalt testkonto,
   og noter versjon, dato og resultat uten personopplysninger. Testene i repoet

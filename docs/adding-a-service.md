@@ -264,14 +264,39 @@ Source(
 
 `provider_bundle=False` holder tjenesten utenfor `core.PROVIDER_SOURCES`, så
 signerte providerpakker ikke krever den. Fra registeret lages `core.SOURCES`,
-`source_adapter.AUTH_MODULES`, `auth_lifecycle.SOURCES`, `auth_cli`,
+`source_adapter.auth_module_name`, `auth_lifecycle.SOURCES`, `auth_cli`,
 `live_traffic.SOURCES`, `live_actions.capabilities` og
-`session_estimates.estimate`. `sources.web_script()` lager et `/services.js` med
+`session_estimates.estimate`. Listene er `sources.SourceNames`, som leser
+registeret hver gang de brukes. `sources.web_script()` lager et `/services.js` med
 navn (`label`), bokstav (`letter`), beskrivelse (`description`) og gruppe
 (`kind`: `school`, `sport`, `mail` eller `other`) for nettsider som viser
 tjenestene; `tests/test_web_script.py` krever at alle er satt. Verktøyene
 `mykid_list_items`, `mykid_get_item` og `mykid_read_attachment` lages av
 `source_server.register_source_reads`. Aktiver med `familiekilder-mcp configure mykid`.
+
+### Tjenester utenfor pakken (internt API)
+
+Et program som bygger på pakken, kan legge til egne tjenester med
+`sources.register(Source(...))`. Modulnavnene i `auth`, `reader` og `actions`
+er da fulle importstier, og kallet må komme før programmet leser eller tilbyr
+kilder. Ekstra MCP-verktøy legges til med `extensions` i
+`source_server.build_server`. Disse feltene i `Source` finnes for slike
+tjenester, men kan brukes av alle:
+
+- `listable=False`: ingen `<source>_list_items`, og listeoppslag avvises.
+  Tjenesten søkes da med et eget `<source>_search`-verktøy, som programmet
+  legger til.
+- `write_permissions=False`: konfigurasjonen avviser skriverettigheter.
+- `session_file`: navnet på innloggingsfilen i `.private/credentials`, når det
+  ikke er `<source>-session.json`.
+- `auth_journal=False`: ingen auth-historikk eller svarjournal i
+  `auth_lifecycle`; eierbinding og flyttemerke gjelder fortsatt.
+- `read_lock_wait`: sekunder en lesing venter på kildelåsen når en annen lesing
+  holder den.
+- En auth-modul med `run_auth_command(args, root)` håndterer selv
+  `auth <source> ...` når `auth_commands` er tom.
+- `Runtime.require_source_allowed(source)` er en krok som kalles før hver
+  detalj- og vedleggslesing.
 
 ### B. Andre steder, når tjenesten trenger dem
 
@@ -358,9 +383,9 @@ Registrering som er inkonsekvent eller lett å overse.
   `core.PROVIDER_SOURCES`, og alle eksisterende pakker blir ugyldige.
   `provider_contract` slår opp `_PACKAGE_IDS[source]`. Sett
   `provider_bundle=False` til tjenesten har en signert providerprofil.
-- **`auth_commands` kan ikke være tom.** `auth_cli._run_generic_auth` slår opp
-  `_AUTH_CAPABILITIES[source]`. Bare Gmail slipper, fordi `source_cli.py` sender den
-  videre før oppslaget.
+- **`auth_commands` kan ikke være tom** med mindre auth-modulen har
+  `run_auth_command`. Ellers avviser `auth_cli._run_generic_auth` alle
+  kommandoene for kilden.
 - **Kildelister skrevet for hånd:** `browser_bootstrap.bootstrap_source` og
   diagnosekartet i `browser_bootstrap._report_unreachable`.
 - **IST Home bruker ikke feilklassene fra `source_adapter`.**

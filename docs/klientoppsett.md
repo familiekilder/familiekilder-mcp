@@ -48,15 +48,6 @@ den eksisterende innloggingen». Da logges du ut av Flyt med en gang, også om d
 avbryter den nye innloggingen. Finnes ikke den nye kommunen i listen, endres
 ingenting. Se [Flyt](flyt.md).
 
-**Gmail:** Du trenger din egen Google OAuth-klient av typen Desktop app. Prosjektet
-deler ikke ut en felles Google-klient. Opprett klienten i Google Cloud Console og
-velg filen med «Velg Google-fil» i veiviseren. Se
-[Gmail-veiledningen](gmail.md#oppsett). Valgte du feil fil, velger du
-«Velg en annen Google-fil» på Gmail-raden før du logger inn. Den nye filen
-erstatter den lagrede bare hvis den er en gyldig Desktop app-klient; ellers
-beholdes den gamle. Med en lagret Gmail-innlogging byttes ikke filen; logg ut
-med `familiekilder-mcp auth gmail logout` først.
-
 ## Nytt innebygd oppsett etter en pakkeoppdatering
 
 Det innebygde oppsettet hører til en bestemt versjon av leverandørens app.
@@ -87,7 +78,7 @@ Disse oppsettene byttes aldri ut automatisk:
   etter at veiviseren la inn det innebygde.
 - Et oppsett du har endret i filen.
 - Et oppsett som ikke kan leses.
-- Oppsettet for Flyt og Gmail. Det har ikke noe innebygd oppsett.
+- Oppsettet for Flyt. Det har ikke noe innebygd oppsett.
 - Oppsett i en datarot med en signert providerpakke (`onboard --bundle`).
 
 Innloggingen din slettes aldri av byttet. Gjelder det nye oppsettet bare en
@@ -139,8 +130,7 @@ familiekilder-mcp configure vigilo
 familiekilder-mcp auth vigilo browser-login
 ```
 
-Spond bruker `browser-bootstrap` i stedet for `browser-login`. Gmail bruker
-`auth gmail login`; se [Gmail](gmail.md#oppsett).
+Spond bruker `browser-bootstrap` i stedet for `browser-login`.
 
 Klientfilen må eies av din OS-bruker, være en vanlig fil og ha filmodus `0600`.
 Bruk en privat mappe med modus `0700`. Ikke legg filen i Git og ikke send den til
@@ -177,7 +167,6 @@ er en formatoversikt, ikke en fil med verdier som kan brukes til innlogging.
 | Spond (`spond`) | `api_root`, `app_version`, `attachment_hosts` |
 | IST Home (`ist-home`) | `authority`, `client_id`, `client_secret`, `redirect_uri`, `scope` |
 | Flyt (`flyt`) | `municipality` (kommunens navn slik det står i Flyts åpne kommuneliste, eller organisasjonsnummeret), eller én oppføring fra listen: `organizationNumber`, `customerName`, `displayName`, `vismaConnectClientContext` |
-| Gmail (`gmail`) | Google-filen for en egen OAuth-klient av typen Desktop app; se [Gmail](gmail.md#oppsett). |
 
 ## Egen vert som prøveordning
 

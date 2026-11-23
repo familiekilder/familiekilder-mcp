@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from familiekilder.core import FamiliekilderError
 from familiekilder.live_config import Config
+from familiekilder.private_state import atomic_write_private_json
 from familiekilder.source_server import Runtime, ReadOnlyRuntime, build_server
 from familiekilder.sources import REGISTRY
 
@@ -28,6 +30,29 @@ class ReadOnlyContractTests(unittest.TestCase):
                 runtime.close()
             self.assertEqual((root / ".private/mcp-config.json").read_bytes(), before)
 
+    def test_a_configuration_with_a_retired_service_still_loads(self) -> None:
+        def stored(root, services):
+            atomic_write_private_json(
+                root / ".private/mcp-config.json", {"version": 1, "services": services}
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stored(root, {"spond": {"write": []}, "gmail": {"write": []}})
+            config = Config.load(root)
+            self.assertEqual(config.services, {"spond": frozenset()})
+            server, runtime = build_server(config)
+            try:
+                names = {tool.name for tool in asyncio.run(server.list_tools())}
+            finally:
+                runtime.close()
+            self.assertIn("spond_list_items", names)
+            config.save()
+            self.assertEqual(Config.load(root).services, {"spond": frozenset()})
+            stored(root, {"fictional-unknown": {"write": []}})
+            with self.assertRaisesRegex(FamiliekilderError, "Ukjent tjeneste"):
+                Config.load(root)
+
     def test_all_sources_offer_only_read_tools_without_write_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config = Config(Path(directory), {name: frozenset() for name in REGISTRY})
@@ -46,7 +71,7 @@ class ReadOnlyContractTests(unittest.TestCase):
                     self.assertIn(f"{prefix}_read_attachment", names)
                 else:
                     self.assertNotIn(f"{prefix}_read_attachment", names)
-                self.assertIn("gmail_search" if source.kind == "mail" else f"{prefix}_list_items", names)
+                self.assertIn(f"{prefix}_list_items", names)
         for tool in tools:
             with self.subTest(tool=tool.name):
                 self.assertTrue(tool.annotations.read_only_hint)

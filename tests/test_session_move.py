@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import httpx
 
-from familiekilder import auth_lifecycle as life, gmail, session_move as move, source_server
+from familiekilder import auth_lifecycle as life, session_move as move, source_server
 from familiekilder.core import FamiliekilderError
 from familiekilder.hosting import host_settings
 from familiekilder.live_config import Config
@@ -45,11 +45,11 @@ class MoveTests(unittest.TestCase):
         self.platform = patch('sys.platform', 'linux')
         self.platform.start()
         self.addCleanup(self.platform.stop)
-        Config(self.mac, {'spond': frozenset(), 'gmail': frozenset()}).save()
-        for source in ('spond', 'gmail'):
+        Config(self.mac, {'spond': frozenset(), 'vigilo': frozenset()}).save()
+        for source in ('spond', 'vigilo'):
             atomic_write_private_json(credential_path(self.mac, move.session_filename(source)), {
                 'access_token': 'fictional-access', 'refresh_token': 'fictional-refresh',
-                'expires_at': 0, 'scope': gmail.SCOPE,
+                'expires_at': 0, 'scope': 'fictional-scope',
                 'client_id': 'fictional-client', 'client_secret': 'fictional-secret',
             })
             life.bind_owner(self.mac, source)
@@ -70,10 +70,10 @@ class MoveTests(unittest.TestCase):
             async with fake.session(self.base) as session:
                 self.assertEqual([t.name for t in (await session.list_tools()).tools], ['family_connections'])
                 result = await asyncio.to_thread(move.move_to, self.mac, self.base, fake.OWNER_CODE)
-                self.assertEqual(result['moved'], ['gmail', 'spond'])
+                self.assertEqual(result['moved'], ['spond', 'vigilo'])
                 names = [t.name for t in (await session.list_tools()).tools]
                 self.assertIn('spond_list_items', names)
-                self.assertIn('gmail_search', names)
+                self.assertIn('vigilo_list_items', names)
                 with patch.object(source_server, 'ToolError', RecordingToolError):
                     answer = await session.call_tool('spond_list_items', {})
                 text = answer.content[0].text
@@ -81,7 +81,7 @@ class MoveTests(unittest.TestCase):
                 self.assertTrue(text.startswith('{'), text + '\n' + ''.join(RecordingToolError.causes))
                 self.assertEqual(json.loads(text)['items'][0]['title'], 'Oppdiktet')
         asyncio.run(catalog())
-        for source in ('spond', 'gmail'):
+        for source in ('spond', 'vigilo'):
             self.assertFalse(credential_path(self.mac, move.session_filename(source)).exists())
             self.assertTrue(move.moved_sources(self.mac)[source]['confirmed'])
             life.require_owner(self.host, source)
@@ -91,7 +91,7 @@ class MoveTests(unittest.TestCase):
         self.assertEqual(read_private_json(credential_path(self.host, 'spond-client.json')), {'client': 'fictional'})
         self.assertEqual(read_private_json(credential_path(self.host, 'spond-refresh-response.json')), {'response': 'fictional-journal'})
 
-    def test_interruption_after_import_before_local_deletion_blocks_gmail_and_refresh(self):
+    def test_interruption_after_import_before_local_deletion_blocks_refresh(self):
         original = move._post
         def post(client, url, code, body):
             response = original(client, url, code, body)
@@ -101,30 +101,23 @@ class MoveTests(unittest.TestCase):
             return response
         with patch.object(move, '_post', post), self.assertRaises(KeyboardInterrupt):
             move.move_to(self.mac, self.base, fake.OWNER_CODE)
-        self.assertTrue(credential_path(self.mac, 'gmail.json').exists())
-        self.assertIn('gmail', move.moved_sources(self.mac))
-        calls = []
-        client = gmail.Client(self.mac, client=httpx.Client(transport=httpx.MockTransport(lambda r: calls.append(r))))
-        self.addCleanup(client.close)
-        with self.assertRaisesRegex(FamiliekilderError, 'flyttet'):
-            client.token(force=True)
-        self.assertEqual(calls, [])
-        with self.assertRaisesRegex(FamiliekilderError, 'flyttet'):
-            life.require_not_moved(self.mac, 'spond')
+        self.assertTrue(credential_path(self.mac, 'vigilo-session.json').exists())
+        self.assertIn('vigilo', move.moved_sources(self.mac))
+        for source in ('spond', 'vigilo'):
+            with self.assertRaisesRegex(FamiliekilderError, 'flyttet'):
+                life.require_not_moved(self.mac, source)
         with patch.dict(os.environ, {'FAMILIEKILDER_INSTALLATION_ID': 'different-installation-id-0000000000'}):
-            copied = gmail.Client(self.host, client=client.http)
             with self.assertRaisesRegex(FamiliekilderError, 'annen'):
-                copied.token(force=True)
+                life.require_owner(self.host, 'vigilo')
         with patch.dict(os.environ, {'FAMILIEKILDER_INSTALLATION_ID': ''}):
             with self.assertRaises(FamiliekilderError):
-                gmail.Client(self.host, client=client.http).token(force=True)
-        self.assertEqual(calls, [])
+                life.require_owner(self.host, 'vigilo')
 
     def test_wrong_host_modified_package_and_replay_are_refused(self):
         receiver = move.MoveReceiver(self.host, host_settings(), self.built.provider.gate)
         public = receiver.create_key()
         payload = {'format': move.PAYLOAD_FORMAT, 'version': 1, 'host': public['host'],
-                   'sources': {'gmail': {'files': {'gmail.json': base64.urlsafe_b64encode(b'{}').decode()}}}}
+                   'sources': {'vigilo': {'files': {'vigilo-session.json': base64.urlsafe_b64encode(b'{}').decode()}}}}
         package = move.seal(payload, key_id=public['key_id'], public_key=move._unb64(public['public_key']), host=public['host'])
         key = receiver.take_key(public['key_id'])
         with self.assertRaises(move.MoveError):
@@ -138,23 +131,23 @@ class MoveTests(unittest.TestCase):
         self.assertIsNone(receiver.take_key(public['key_id']))
 
     def test_import_crash_after_session_write_keeps_destination_ownership(self):
-        package = {'sources': {'gmail': {'gmail.json': credential_path(self.mac, 'gmail.json').read_bytes()}}}
+        package = {'sources': {'vigilo': {'vigilo-session.json': credential_path(self.mac, 'vigilo-session.json').read_bytes()}}}
         original = move.atomic_write_private_bytes
         def crash(path, data):
-            self.assertTrue(credential_path(self.host, 'gmail-auth-owner.json').exists())
+            self.assertTrue(credential_path(self.host, 'vigilo-auth-owner.json').exists())
             original(path, data)
             raise KeyboardInterrupt
         with patch.object(move, 'atomic_write_private_bytes', crash), self.assertRaises(KeyboardInterrupt):
             move.import_sources(self.host, package)
-        self.assertTrue(credential_path(self.host, 'gmail.json').exists())
-        life.require_owner(self.host, 'gmail')
+        self.assertTrue(credential_path(self.host, 'vigilo-session.json').exists())
+        life.require_owner(self.host, 'vigilo')
         with patch.dict(os.environ, {'FAMILIEKILDER_INSTALLATION_ID': 'different-installation-id-0000000000'}):
             with self.assertRaisesRegex(FamiliekilderError, 'annen'):
-                life.require_owner(self.host, 'gmail')
+                life.require_owner(self.host, 'vigilo')
 
     def test_hosted_ownerless_session_is_never_adopted_even_without_host_secrets(self):
         move.MoveReceiver(self.host, host_settings(), self.built.provider.gate).create_key()
-        for source in ('gmail', 'spond'):
+        for source in ('vigilo', 'spond'):
             atomic_write_private_json(credential_path(self.host, move.session_filename(source)), {'refresh_token': 'fictional'})
             for identity in (fake.INSTALLATION_ID, ''):
                 with patch.dict(os.environ, {'FAMILIEKILDER_INSTALLATION_ID': identity}):
@@ -171,8 +164,8 @@ class MoveTests(unittest.TestCase):
             return original(client, url, code, body)
         with patch.object(move, '_post', post), self.assertRaises(move.MoveUncertain):
             move.move_to(self.mac, self.base, fake.OWNER_CODE)
-        self.assertFalse(credential_path(self.mac, 'gmail.json').exists())
-        self.assertFalse(move.moved_sources(self.mac)['gmail']['confirmed'])
+        self.assertFalse(credential_path(self.mac, 'vigilo-session.json').exists())
+        self.assertFalse(move.moved_sources(self.mac)['vigilo']['confirmed'])
 
 
 if __name__ == '__main__':

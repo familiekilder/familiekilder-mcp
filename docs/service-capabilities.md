@@ -6,13 +6,14 @@ gir ingen rett til å sende, endre eller slette den. Kalender og e-postutsending
 krever en annen kobling i assistenten.
 
 De fleste leseverktøyene er `<tjeneste>_list_items`, `<tjeneste>_get_item` og
-`<tjeneste>_read_attachment`. Gmail har målrettet søk i stedet for en liste.
+`<tjeneste>_read_attachment`. Gmail er ikke med; bruk assistentens egen
+Gmail-tilkobling.
 `family_connections` viser aktiverte tjenester, lokal innloggingsstatus og
 funksjonsstatus. Se [oppsettet](kom-i-gang.md) for innlogging og kjøring.
 
 «Ikke verifisert» betyr at vi mangler tilstrekkelig bevis for API-kontrakten
 eller resultatkontrollen. Det betyr ikke at tjenesten mangler funksjonen.
-Koblingene er uoffisielle, unntatt Gmail, som bruker Googles offisielle API.
+Koblingene er uoffisielle, unntatt Hoopit, som bruker Hoopits offisielle API.
 
 | Tjeneste | Lesing i den selvstendige serveren |
 |---|---|
@@ -22,7 +23,6 @@ Koblingene er uoffisielle, unntatt Gmail, som bruker Googles offisielle API.
 | [Hoopit](#hoopit) | Innlegg, kommentarer, aktiviteter og familiens svar |
 | [IST Home](#ist-home) | Barn og plasseringer, innlegg, samtaler, mottakere, fravær, samtaleinvitasjoner og vedlegg |
 | [Flyt](#flyt) | Barnehage: barn og plasser, beskjeder, dagbok med bilder, meldingstråd, kalender, registrert fravær, inn-/utsjekk og vedlegg |
-| [Gmail](#gmail) | Målrettede e-postsøk, meldinger og vedlegg |
 
 ## Vigilo
 
@@ -106,13 +106,6 @@ nettverket. Innlogging og lesing av barnehage er prøvd mot en ekte konto i Oslo
 kommune i november 2026. [Flyt](flyt.md) beskriver innlogging, ruter, grenser
 og det som ikke er kontrollert ennå.
 
-## Gmail
-
-Gmail brukes med `gmail.readonly` og målrettede søk, ikke som en full feed. Se
-[Gmail](gmail.md) for søk, begrensninger og oppsett av egen Google-klient.
-Desktop-innlogging er prøvd med lesescope; målrettede søk er testet med
-simulerte Google-svar.
-
 ## Lesedekning og trafikk
 
 `complete=true` gjelder det avgrensede oppslaget, ikke all historikk. Feil,
@@ -140,7 +133,6 @@ Python-modulene er interne, se [veien til 1.0](release.md).
 | Hoopit | Svar på aktiviteter (påmelding og avmelding med grunn) | Fravær, meldinger |
 | IST Home | Nye samtaler og svar, fravær, booking og avbestilling av samtaletid | Andre deltakelsesformer; bookingdetaljer med aktiv invitasjon |
 | Flyt | Ingen skrivekode | — |
-| Gmail | Ingen skrivekode | — |
 
 Skriving er bare testet mot syntetiske mål. Koden krever verifisert
 API-kontrakt, eksplisitt kategori (`messages`, `absence` eller `participation`)

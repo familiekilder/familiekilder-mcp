@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import FamiliekilderError, normalize_source
-from .sources import REGISTRY
+from .sources import REGISTRY, module_path
 
 
 class SourceAdapterError(FamiliekilderError):
@@ -31,7 +31,9 @@ class SourceBudgetExceeded(SourceUnavailable):
     """A bounded collection ended before the provider's final page/item."""
 
 
-AUTH_MODULES = {name: f"{__package__}.{s.auth}" for name, s in REGISTRY.items()}
+def auth_module_name(source: str) -> str:
+    """The import path of the source's auth module; KeyError for an unknown source."""
+    return module_path(REGISTRY[source].auth)
 
 
 class LazySourceAdapter:
@@ -46,7 +48,7 @@ class LazySourceAdapter:
             raise SourceUnavailable("Kildeadapteren er ikke installert") from None
 
     def auth_status(self, root: Path) -> Mapping[str, Any]:
-        module = self._import(AUTH_MODULES[self.source])
+        module = self._import(auth_module_name(self.source))
         operation = getattr(module, "auth_status", None)
         if not callable(operation):
             raise SourceUnavailable("Kildeadapteren mangler autentiseringsstatus")
@@ -66,7 +68,7 @@ class LazySourceAdapter:
 
 
 def adapter_sources():
-    return tuple(AUTH_MODULES)
+    return tuple(REGISTRY)
 
 
 def get_adapter(source):

@@ -96,8 +96,9 @@ Vigilo og IST Home har egne verktøy for registrert fravær:
 
 ## E-post sammen med de andre tjenestene
 
-Gmail leses med målrettede søk (`gmail_search`), ikke som en full innboks. Se
-[Gmail](gmail.md) for oppsettet.
+Denne serveren leser ikke e-post. Claude og ChatGPT har sine egne
+Gmail-tilkoblinger: slå på den i assistenten, så kan den sammenligne e-post med
+tjenestene her.
 
 > Finn e-poster fra fotballklubben om cupen i helgen, og sammenlign med det som
 > står i Spond. Si fra hvis tid, sted eller oppmøte ikke stemmer.

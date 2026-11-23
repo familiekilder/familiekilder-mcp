@@ -15,7 +15,6 @@ kopien. Det hentes aldri ekstra historikk for å fylle mellomlageret.
 | `*_get_item` | Gjenbruk i opptil fem minutter | `freshness="fresh"` |
 | Tilbakeblikk | `freshness="cached"` bruker beholdt kopi i opptil sju dager | Cache-miss henter kilden; ingen offline-garanti |
 | `*_list_items` | Gjenbruk i opptil 60 sekunder; tekstfiltre deler innhentingen | `refresh=true` uten cursor |
-| `gmail_search` | Identisk query, API-side og filtre gjenbrukes i opptil 60 sekunder | Etter 60 sekunder hentes siden igjen |
 | `*_read_attachment` | Beholdt tekst og renderte sider for samme observerte kildeversjon | `refresh=true` uten preparation_token |
 
 Vedleggsverktøyet støtter også `freshness="cached"` for å gå tilbake til beholdt
