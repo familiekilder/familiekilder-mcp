@@ -357,6 +357,7 @@ function render(state) {
     byId('continue-job').hidden = state.job.phase !== 'waiting';
     byId('cancel-job').hidden = !busy;
     byId('job').classList.toggle('error', state.job.phase === 'error');
+    byId('job').classList.toggle('active', busy);
   }
   const dependencies = byId('dependencies');
   dependencies.replaceChildren();

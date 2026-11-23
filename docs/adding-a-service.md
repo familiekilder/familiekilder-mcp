@@ -67,7 +67,7 @@ også én måte å lage den første økten på:
 | Vei | Funksjoner i auth-modulen | `auth_commands` | Brukes av |
 |---|---|---|---|
 | OAuth med callback | `consent_status`, `record_consent`, `begin_login`, `login_with_callback` | `login`, `browser-login` | Vigilo, Skolemelding, IST Home, Flyt |
-| Økt hentet fra nettleser | egen gren i `browser_bootstrap.bootstrap_source`, og `import_session` | `browser-bootstrap`, `import-session` | Spond |
+| Økt hentet fra nettleser | egen gren i `browser_bootstrap.bootstrap_source` med uttrekk og innloggingssjekk, og `import_session` | `browser-bootstrap`, `import-session` | Spond |
 | Import av øktfil | `import_session(root, path, *, replace_existing)` | `import-session` | Spond |
 | Personlig tilgangstoken | `connect_token(root, token, *, replace_existing)` og `token_for_use(root)`; `login="token"` i `Source` | `token` | Hoopit |
 
@@ -283,7 +283,11 @@ tjenestene; `tests/test_web_script.py` krever at alle er satt. Verktøyene
       kontoidentiteten (`read_cache.account_scope`). Valget kan ikke byttes mens
       det finnes en økt (`flyt_auth._store_client_config`).
 - [ ] `browser_bootstrap.bootstrap_source`: bare med `browser-bootstrap`.
-      Passordutfylling krever i tillegg `password_origins` i `Source`.
+      Grenen gir `_bootstrap` et uttrekk som leser feltene, og en sjekk som
+      bare svarer ja eller nei på om innloggingen er ferdig, uten å lese
+      verdiene (som de interne `_spond_payload` og `_spond_probe`). Med sjekken
+      fortsetter veiviseren og terminalen av seg selv; uten den venter de på
+      brukeren. Passordutfylling krever i tillegg `password_origins` i `Source`.
 - [ ] `chat_discovery.py`: bare hvis `streams` har `"chat"` og leseren vil
       bruke den felles chatgjennomgangen i stedet for en egen `discover_chats`.
 - [ ] `provider_bundle.py` og `provider_contract.py`: bare med

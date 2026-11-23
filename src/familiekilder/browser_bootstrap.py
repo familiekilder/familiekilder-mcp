@@ -5,7 +5,9 @@ The user signs in in a visible, disposable profile of Brave, Chrome or Edge
 Phone approval stays manual. This module then reads only the provider's exact
 allowlisted authentication fields over a private DevTools pipe, never a TCP
 port. It never reads cookies, passwords, arbitrary storage keys, or the user's
-normal browser profile.
+normal browser profile. While the user signs in, a presence-only check asks the
+page whether those fields are set and gets one boolean back, so the login can
+continue without the user's confirmation.
 
 Secret-bearing values live only in local variables and one short-lived 0600
 import file.  Public return values are restricted to validated, non-secret
@@ -65,6 +67,16 @@ _IMPORT_FILE = "session-import.json"
 _MAX_CDP_FRAME_BYTES = 4 * 1024 * 1024
 _MAX_SECRET_BYTES = 128 * 1024
 _CDP_TIMEOUT_SECONDS = 20.0
+# While the user signs in, the window is checked about once a second.
+_PROBE_TIMEOUT_SECONDS = 5.0
+_PROBE_INTERVAL_SECONDS = 1.0
+# Positive checks in a row before the login is read, so a half-written login is not.
+_READY_CHECKS = 2
+# Checks in a row without any page before the window counts as closed.
+_CLOSED_CHECKS = 3
+# Failed automatic reads before only the user's confirmation is waited for.
+_AUTOMATIC_READS = 3
+_CLOSED_MESSAGE = "Nettleservinduet ble lukket før innloggingen var ferdig"
 
 _SPOND_STORAGE_KEYS = (
     "token",
@@ -97,6 +109,14 @@ os.execv(executable, arguments)
 """
 
 
+class BrowserClosedError(BrowserBootstrapError):
+    """The login window or its DevTools pipe went away before the login was read."""
+
+
+class _CdpPipeClosed(BrowserBootstrapError):
+    """The DevTools pipe to the browser is closed or broken."""
+
+
 class CdpClient(Protocol):
     def call(
         self,
@@ -120,7 +140,14 @@ class BrowserHandle(Protocol):
 
 
 BrowserFactory = Callable[[Path, str, Path | str | None], BrowserHandle]
+# Blocks until the user confirms the login.
 WaitForUser = Callable[[str], None]
+# Blocks until the user confirms or `ready()` returns True. Call `ready()` about
+# once a second; it raises BrowserClosedError when the login window is gone.
+WaitForLogin = Callable[[str, Callable[[], bool]], None]
+# A source's presence-only check that the login is finished. It must never
+# return or read the secret values themselves.
+LoginProbe = Callable[[CdpClient], bool]
 Importer = Callable[..., Mapping[str, Any]]
 
 
@@ -525,7 +552,7 @@ class _CdpFramer:
 
     def feed(self, chunk: bytes) -> list[Mapping[str, Any]]:
         if not isinstance(chunk, bytes) or not chunk:
-            raise BrowserBootstrapError("DevTools-røret ble lukket uventet")
+            raise _CdpPipeClosed("DevTools-røret ble lukket uventet")
         self._buffer.extend(chunk)
         if len(self._buffer) > self._maximum and b"\0" not in self._buffer:
             self._buffer.clear()
@@ -565,6 +592,8 @@ class _PipeCdpClient:
         self._pending: list[Mapping[str, Any]] = []
         self._events: list[Mapping[str, Any]] = []
         self._next_id = 1
+        # Requests that timed out; their late answers are skipped.
+        self._abandoned: set[int] = set()
         self._closed = False
         self._chunks: queue.Queue[bytes | None] | None = None
         self._reader: threading.Thread | None = None
@@ -592,7 +621,7 @@ class _PipeCdpClient:
             except queue.Empty:
                 raise BrowserBootstrapError(_TIMEOUT_MESSAGE) from None
             if chunk is None:
-                raise BrowserBootstrapError("DevTools-røret kunne ikke lese responsen")
+                raise _CdpPipeClosed("DevTools-røret kunne ikke lese responsen")
             return chunk
         try:
             ready, _, _ = select.select([self._read_descriptor], [], [], remaining)
@@ -600,9 +629,7 @@ class _PipeCdpClient:
                 raise BrowserBootstrapError(_TIMEOUT_MESSAGE)
             return os.read(self._read_descriptor, 64 * 1024)
         except OSError:
-            raise BrowserBootstrapError(
-                "DevTools-røret kunne ikke lese responsen"
-            ) from None
+            raise _CdpPipeClosed("DevTools-røret kunne ikke lese responsen") from None
 
     def _write(self, payload: bytes) -> None:
         offset = 0
@@ -613,9 +640,7 @@ class _PipeCdpClient:
                     raise OSError
                 offset += written
         except OSError:
-            raise BrowserBootstrapError(
-                "DevTools-røret kunne ikke skrive forespørselen"
-            ) from None
+            raise _CdpPipeClosed("DevTools-røret kunne ikke skrive forespørselen") from None
 
     def _next_message(self, deadline: float) -> Mapping[str, Any]:
         while not self._pending:
@@ -635,7 +660,7 @@ class _PipeCdpClient:
         timeout: float = _CDP_TIMEOUT_SECONDS,
     ) -> Mapping[str, Any]:
         if self._closed:
-            raise BrowserBootstrapError("DevTools-røret er allerede lukket")
+            raise _CdpPipeClosed("DevTools-røret er allerede lukket")
         if (
             not isinstance(method, str)
             or not method
@@ -654,7 +679,14 @@ class _PipeCdpClient:
         self._write(_CdpFramer.encode(request))
         deadline = time.monotonic() + float(timeout)
         while True:
-            response = self._next_message(deadline)
+            try:
+                response = self._next_message(deadline)
+            except BrowserBootstrapError as exc:
+                if str(exc) == _TIMEOUT_MESSAGE:
+                    self._abandoned.add(request_id)
+                raise
+            if self._skip_late_answer(response):
+                continue
             if "id" not in response:
                 self._events.append(response)
                 if len(self._events) > 1024:
@@ -677,6 +709,15 @@ class _PipeCdpClient:
                     "DevTools-responsen mangler et gyldig resultat"
                 )
             return result
+
+    def _skip_late_answer(self, message: Mapping[str, Any]) -> bool:
+        """Whether this is the answer to a request that already timed out."""
+
+        request_id = message.get("id")
+        if isinstance(request_id, int) and request_id in self._abandoned:
+            self._abandoned.discard(request_id)
+            return True
+        return False
 
     def wait_for_event(
         self, methods: frozenset[str], *, timeout: float
@@ -703,6 +744,8 @@ class _PipeCdpClient:
                     if str(exc) == _TIMEOUT_MESSAGE:
                         return None
                     raise
+            if self._skip_late_answer(event):
+                continue
             if "id" in event:
                 raise BrowserBootstrapError(
                     "DevTools-røret returnerte en uventet respons"
@@ -1010,16 +1053,26 @@ def _exact_origin(url: Any, expected: str) -> bool:
     )
 
 
-def _page_session(cdp: CdpClient, origin: str) -> str:
-    targets = cdp.call("Target.getTargets").get("targetInfos")
+def _page_targets(
+    cdp: CdpClient, *, timeout: float = _CDP_TIMEOUT_SECONDS
+) -> list[Mapping[str, Any]]:
+    targets = cdp.call("Target.getTargets", timeout=timeout).get("targetInfos")
     if not isinstance(targets, list):
         raise BrowserBootstrapError("Nettleseren returnerte en ukjent sidelayout")
-    matching = [
+    return [
         target
         for target in targets
-        if isinstance(target, Mapping)
-        and target.get("type") == "page"
-        and _exact_origin(target.get("url"), origin)
+        if isinstance(target, Mapping) and target.get("type") == "page"
+    ]
+
+
+def _origin_target_id(
+    cdp: CdpClient, origin: str, *, timeout: float = _CDP_TIMEOUT_SECONDS
+) -> str:
+    matching = [
+        target
+        for target in _page_targets(cdp, timeout=timeout)
+        if _exact_origin(target.get("url"), origin)
     ]
     if len(matching) != 1:
         raise BrowserBootstrapError(
@@ -1028,13 +1081,25 @@ def _page_session(cdp: CdpClient, origin: str) -> str:
     target_id = matching[0].get("targetId")
     if not isinstance(target_id, str) or not target_id or len(target_id) > 512:
         raise BrowserBootstrapError("Nettleseren returnerte en ugyldig side-ID")
+    return target_id
+
+
+def _attach(
+    cdp: CdpClient, target_id: str, *, timeout: float = _CDP_TIMEOUT_SECONDS
+) -> str:
     attached = cdp.call(
-        "Target.attachToTarget", {"targetId": target_id, "flatten": True}
+        "Target.attachToTarget",
+        {"targetId": target_id, "flatten": True},
+        timeout=timeout,
     )
     session_id = attached.get("sessionId")
     if not isinstance(session_id, str) or not session_id or len(session_id) > 512:
         raise BrowserBootstrapError("Nettleseren returnerte en ugyldig sesjons-ID")
     return session_id
+
+
+def _page_session(cdp: CdpClient, origin: str) -> str:
+    return _attach(cdp, _origin_target_id(cdp, origin))
 
 
 def _single_https_page_session(
@@ -1355,6 +1420,123 @@ def _spond_payload(cdp: CdpClient) -> dict[str, Any]:
     return spond_fields(value)
 
 
+class _StoragePresenceProbe:
+    """Whether one page on an exact origin holds non-empty values for the keys.
+
+    The page answers with a single boolean, so no stored value leaves it. The
+    attached session is kept for the page and renewed when the page changes or
+    a check fails.
+    """
+
+    def __init__(self, origin: str, keys: tuple[str, ...]) -> None:
+        self._origin = origin
+        self.expression = f"""(() => {{
+  "use strict";
+  const keys = {json.dumps(list(keys))};
+  return keys.every((key) => {{
+    const value = window.localStorage.getItem(key);
+    return typeof value === "string" && value.length > 0;
+  }});
+}})()"""
+        self._target_id: str | None = None
+        self._session_id: str | None = None
+
+    def __call__(self, cdp: CdpClient) -> bool:
+        try:
+            target_id = _origin_target_id(
+                cdp, self._origin, timeout=_PROBE_TIMEOUT_SECONDS
+            )
+        except BrowserBootstrapError as exc:
+            if isinstance(exc, _CdpPipeClosed):
+                raise
+            # Not on the origin yet, or more than one page: not ready.
+            return False
+        try:
+            if target_id != self._target_id or self._session_id is None:
+                self._target_id = None
+                self._session_id = _attach(
+                    cdp, target_id, timeout=_PROBE_TIMEOUT_SECONDS
+                )
+                self._target_id = target_id
+            response = cdp.call(
+                "Runtime.evaluate",
+                {
+                    "expression": self.expression,
+                    "returnByValue": True,
+                    "awaitPromise": False,
+                    "userGesture": False,
+                    "silent": True,
+                },
+                session_id=self._session_id,
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except BrowserBootstrapError:
+            self._target_id = None
+            self._session_id = None
+            raise
+        if "exceptionDetails" in response:
+            return False
+        remote = response.get("result")
+        return isinstance(remote, Mapping) and remote.get("value") is True
+
+
+def _spond_probe() -> LoginProbe:
+    return _StoragePresenceProbe(SPOND_ORIGIN, _SPOND_STORAGE_KEYS)
+
+
+class _LoginWatch:
+    """Tells whether the user has finished signing in, without reading secrets.
+
+    Each call checks the window and runs the source's presence-only probe once.
+    It reports ready only after `_READY_CHECKS` positive probes in a row. A
+    failed probe means "not yet"; a closed window or DevTools pipe raises
+    BrowserClosedError.
+    """
+
+    def __init__(self, cdp: CdpClient, probe: LoginProbe | None) -> None:
+        self._cdp = cdp
+        self._probe = probe
+        self._positive = 0
+        self._empty = 0
+        self._seen_page = False
+        self._failed_reads = 0
+        # Whether the last call reported ready.
+        self.detected = False
+
+    def __call__(self) -> bool:
+        self.detected = False
+        try:
+            self._check_window()
+            if self._probe is None or self._failed_reads >= _AUTOMATIC_READS:
+                return False
+            ready = self._probe(self._cdp) is True
+        except (BrowserClosedError, _CdpPipeClosed):
+            raise BrowserClosedError(_CLOSED_MESSAGE) from None
+        except BrowserBootstrapError:
+            ready = False
+        self._positive = self._positive + 1 if ready else 0
+        self.detected = self._positive >= _READY_CHECKS
+        return self.detected
+
+    def _check_window(self) -> None:
+        if _page_targets(self._cdp, timeout=_PROBE_TIMEOUT_SECONDS):
+            self._seen_page = True
+            self._empty = 0
+            return
+        # The first page can take a while to appear after the browser starts.
+        if self._seen_page:
+            self._empty += 1
+            if self._empty >= _CLOSED_CHECKS:
+                raise BrowserClosedError(_CLOSED_MESSAGE)
+
+    def read_failed(self) -> None:
+        """The automatic read failed; wait again, and only for so long."""
+
+        self._failed_reads += 1
+        self._positive = 0
+        self.detected = False
+
+
 def spond_fields(value: Any) -> dict[str, Any]:
     """Validate the four Spond localStorage fields, however they were read.
 
@@ -1403,15 +1585,22 @@ def _password_step(autofill, cdp):
         print("Passordutfylling er utilgjengelig; fullfør passordsteget manuelt.", file=sys.stderr)
 
 
-def _wait_with_password(prompt, autofill, cdp):
-    if not autofill.enabled:
-        return _default_wait(prompt)
+def _wait_in_terminal(prompt, autofill, cdp, ready):
+    """Wait for Enter or a detected login, filling the password if set up."""
+
     if not sys.stdin.isatty():
-        raise BrowserBootstrapError("Innloggingen krever en interaktiv terminal")
+        if autofill.enabled:
+            raise BrowserBootstrapError("Innloggingen krever en interaktiv terminal")
+        # Without a terminal there is no way to poll for Enter; only Enter counts.
+        return _default_wait(prompt)
     print(prompt, end="", flush=True)
     while True:
-        _password_step(autofill, cdp)
-        if _line_ready(1.0):
+        if autofill.enabled:
+            _password_step(autofill, cdp)
+        if ready():
+            print("\nInnloggingen er funnet.", flush=True)
+            return
+        if _line_ready(_PROBE_INTERVAL_SECONDS):
             if not sys.stdin.readline():
                 raise BrowserBootstrapError("Innloggingen ble avbrutt")
             return
@@ -1588,13 +1777,17 @@ def _bootstrap(
     start_url: str,
     prompt: str,
     extractor: Callable[[CdpClient], Mapping[str, Any]],
+    probe: LoginProbe | None,
     importer: Importer,
     replace_existing: bool,
     brave_path: Path | str | None,
     wait_for_user: WaitForUser | None,
     browser_factory: BrowserFactory | None,
     login_browser: str | None = None,
+    wait_for_login: WaitForLogin | None = None,
 ) -> dict[str, Any]:
+    if wait_for_user is not None and wait_for_login is not None:
+        raise BrowserBootstrapError("Velg én måte å vente på innloggingen")
     choice = _login_browser(root, login_browser)
     run_path = _create_run_directory(root)
     browser: BrowserHandle | None = None
@@ -1613,13 +1806,31 @@ def _bootstrap(
             raise BrowserBootstrapError(
                 "Den isolerte nettleserprofilen kunne ikke startes"
             ) from None
-        if wait_for_user is not None:
-            wait_for_user(prompt)
-        else:
-            from .password_autofill import PasswordAutofill
+        cdp = browser.cdp
+        watch = _LoginWatch(cdp, probe)
+        autofill = None
+        while True:
+            if wait_for_login is not None:
+                wait_for_login(prompt, watch)
+            elif wait_for_user is not None:
+                wait_for_user(prompt)
+            else:
+                if autofill is None:
+                    from .password_autofill import PasswordAutofill
 
-            _wait_with_password(prompt, PasswordAutofill(root, source), browser.cdp)
-        import_file = _write_import_file(run_path, dict(extractor(browser.cdp)))
+                    autofill = PasswordAutofill(root, source)
+                _wait_in_terminal(prompt, autofill, cdp, watch)
+            try:
+                payload = dict(extractor(cdp))
+            except BrowserBootstrapError:
+                # A confirmed login that cannot be read fails as before. A
+                # detected one may still be settling, so wait again.
+                if not watch.detected:
+                    raise
+                watch.read_failed()
+                continue
+            break
+        import_file = _write_import_file(run_path, payload)
         _close_browser(browser)
         browser = None
         return _run_import(root, source, import_file, importer, replace_existing)
@@ -1661,8 +1872,15 @@ def bootstrap_spond(
     browser_factory: BrowserFactory | None = None,
     importer: Importer | None = None,
     login_browser: str | None = None,
+    wait_for_login: WaitForLogin | None = None,
 ) -> dict[str, Any]:
-    """Capture and import exactly four Spond localStorage auth fields."""
+    """Capture and import exactly four Spond localStorage auth fields.
+
+    Without `wait_for_user` or `wait_for_login`, the terminal waits for Enter
+    and also continues by itself once the login is detected. `wait_for_login`
+    gives the caller the same detection; `wait_for_user` waits only for the
+    user's confirmation.
+    """
 
     from .spond_auth import import_session, load_client_config
 
@@ -1680,15 +1898,18 @@ def bootstrap_spond(
         start_url=SPOND_LOGIN_URL,
         prompt=(
             "Logg inn i Spond i det isolerte nettleservinduet. "
-            "Når Spond er ferdig lastet, gå tilbake hit og trykk Enter: "
+            "Vi fortsetter av oss selv når innloggingen er ferdig. "
+            "Skjer det ikke noe når Spond er ferdig lastet, trykker du Enter her: "
         ),
         extractor=_spond_payload,
+        probe=_spond_probe(),
         importer=importer,
         replace_existing=replace_existing,
         brave_path=brave_path,
         wait_for_user=wait_for_user,
         browser_factory=browser_factory,
         login_browser=login_browser,
+        wait_for_login=wait_for_login,
     )
 
 
@@ -1706,6 +1927,7 @@ def bootstrap_source(
 
 __all__ = [
     "BrowserBootstrapError",
+    "BrowserClosedError",
     "SPOND_LOGIN_URL",
     "SPOND_ORIGIN",
     "bootstrap_source",

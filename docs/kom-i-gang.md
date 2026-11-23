@@ -173,8 +173,10 @@ denne maskinen.
    du ikke har logget inn: kommunen i innloggingsdialogen, Google-filen med
    «Velg en annen Google-fil». Se [klientoppsett](klientoppsett.md).
 2. Logg inn i det separate nettleservinduet. BankID gjør du selv. For Spond
-   trykker du «Jeg er logget inn» når tjenesten er ferdig lastet. For Hoopit
-   velger du «Koble til med token»:
+   merker veiviseren selv når du er logget inn, og lagrer innloggingen. Skjer
+   det ikke noe når Spond er ferdig lastet, trykker du «Jeg er logget inn».
+   Meldingen med knappen står øverst i veiviseren og blir stående synlig mens
+   du venter. For Hoopit velger du «Koble til med token»:
    1. Åpne [tokensiden hos Hoopit](https://id.hoopit.io/security/access-tokens/)
       og logg inn.
    2. Skriv «familiekilder» i «Navn».
@@ -232,6 +234,11 @@ familiekilder-mcp auth hoopit token                # Hoopit: lim inn tokenet, de
 familiekilder-mcp auth spond import-session --session-file /sti/til/.private/spond-økt.json
 familiekilder-mcp auth gmail login                 # se docs/gmail.md
 ```
+
+`auth spond browser-bootstrap` fortsetter av seg selv når du er logget inn i
+nettleservinduet. Skjer det ikke noe når Spond er ferdig lastet, trykker du Enter
+i terminalen. Lukker du vinduet før innloggingen er ferdig, stopper kommandoen
+med en melding om det.
 
 Hoopit trenger ingen klientkonfigurasjon. Tokenet lager du selv, som beskrevet
 i [Hoopit](hoopit-ingestion.md); det kan også sendes på stdin

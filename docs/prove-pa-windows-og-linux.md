@@ -70,8 +70,9 @@ Dette er de samme kommandoene som i [Kom i gang](kom-i-gang.md#last-ned-og-insta
    på «Forhåndssjekk», eller kjør den fra en ny terminal; se
    [under](#forhåndssjekken). Første linje skal være `Resultat: OK`.
 4. **Logg inn.** Velg «Logg inn» på én tjeneste. Et eget nettleservindu
-   åpnes med en tom, midlertidig profil. Logg inn der. For Spond trykker du
-   «Jeg er logget inn» i veiviseren når tjenesten er ferdig lastet. Hoopit
+   åpnes med en tom, midlertidig profil. Logg inn der. For Spond skal
+   veiviseren selv merke at du er logget inn. Skjer det ikke noe når tjenesten
+   er ferdig lastet, trykker du «Jeg er logget inn» i veiviseren. Hoopit
    trenger ikke nettleservinduet: du limer inn et token, se
    [Hoopit](hoopit-ingestion.md).
    Veiviseren skal vise at innloggingen er lagret.

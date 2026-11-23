@@ -9,9 +9,10 @@ import unittest
 from unittest.mock import patch
 
 from familiekilder import flyt_auth
+from familiekilder.browser_bootstrap import BrowserClosedError
 from familiekilder.client_defaults import default_client_config
 from familiekilder.connection_status import auth_module
-from familiekilder.setup_service import SetupError, SetupService
+from familiekilder.setup_service import Job, SetupError, SetupService
 from familiekilder.live_config import Config
 from familiekilder.private_state import (
     atomic_write_private_bytes, atomic_write_private_json, credential_path, ensure_private_directory,
@@ -332,6 +333,110 @@ class SetupHttpTests(SetupServerCase):
             self.service.worker.join(timeout=4)
         self.assertEqual(self.service.job.phase, "cancelled")
         self.assertEqual(Config.load(self.root).services, {})
+
+
+class BrowserLoginWaitTests(unittest.TestCase):
+    """The wizard's wait for a Spond login in the separate browser window."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name) / "data"
+        self.service = SetupService(self.root, home=Path(self.temporary.name))
+        self.job = Job(id="fictional-job", source="spond")
+        self.service.job = self.job
+        self.waits = []
+        check = patch("familiekilder.setup_service.LOGIN_CHECK_SECONDS", 0.0)
+        check.start()
+        self.addCleanup(check.stop)
+
+    def bootstrap(self, ready):
+        """A browser bootstrap that only waits; `ready` stands in for the login check."""
+
+        def fake(root, source, *, replace_existing, wait_for_login):
+            self.assertEqual((root, source), (self.root, "spond"))
+            wait_for_login("fictional prompt", ready)
+            self.waits.append((self.job.phase, self.job.message))
+            return {"source": source}
+
+        return patch("familiekilder.browser_bootstrap.bootstrap_source", side_effect=fake)
+
+    def login_in_background(self):
+        errors = []
+
+        def run():
+            try:
+                self.service._login(self.job, replace=False)
+            except Exception as error:  # noqa: BLE001 - the test inspects it
+                errors.append(error)
+
+        worker = threading.Thread(target=run)
+        worker.start()
+        while self.job.phase != "waiting" and worker.is_alive():
+            self.job.cancel.wait(0.01)
+        return worker, errors
+
+    def test_a_detected_login_continues_without_the_button(self):
+        answers = iter([False, False, True])
+        with self.bootstrap(lambda: next(answers)):
+            self.service._login(self.job, replace=False)
+        self.assertEqual(self.waits, [("working", "Henter innloggingen fra nettleservinduet …")])
+        self.assertFalse(self.job.complete.is_set())
+
+    def test_the_waiting_message_says_the_login_is_detected_and_the_button_is_a_fallback(self):
+        seen = []
+
+        def ready():
+            seen.append((self.job.phase, self.job.message))
+            return True
+
+        with self.bootstrap(ready):
+            self.service._login(self.job, replace=False)
+        phase, message = seen[0]
+        self.assertEqual(phase, "waiting")
+        self.assertIn("Vi merker selv når du er logget inn", message)
+        self.assertIn("«Jeg er logget inn»", message)
+
+    def test_the_button_still_continues(self):
+        with self.bootstrap(lambda: False):
+            worker, errors = self.login_in_background()
+            self.service.signal(self.job.id, cancel=False)
+            worker.join(timeout=3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(self.waits[0][0], "working")
+
+    def test_a_click_just_after_detection_is_ignored(self):
+        self.job.phase = "working"
+        self.service.signal(self.job.id, cancel=False)
+        self.assertFalse(self.job.complete.is_set())
+
+    def test_cancel_stops_the_wait(self):
+        with self.bootstrap(lambda: False):
+            worker, errors = self.login_in_background()
+            self.service.signal(self.job.id, cancel=True)
+            worker.join(timeout=3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual([str(error) for error in errors], ["Innloggingen ble avbrutt."])
+        self.assertEqual(self.waits, [])
+
+    def test_the_wait_ends_at_the_deadline(self):
+        with (
+            patch("familiekilder.setup_service.LOGIN_WAIT_SECONDS", 0.3),
+            self.bootstrap(lambda: False),
+        ):
+            with self.assertRaisesRegex(SetupError, "avbrutt"):
+                self.service._login(self.job, replace=False)
+
+    def test_a_closed_window_gives_its_own_message(self):
+        def closed():
+            raise BrowserClosedError("Nettleservinduet ble lukket før innloggingen var ferdig")
+
+        with self.bootstrap(closed):
+            with self.assertRaises(SetupError) as raised:
+                self.service._login(self.job, replace=False)
+        self.assertIn("Nettleservinduet ble lukket", str(raised.exception))
+        self.assertIn("«Logg inn»", str(raised.exception))
 
 
 class FlytSetupTests(SetupServerCase):

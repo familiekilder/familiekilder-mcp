@@ -36,6 +36,10 @@ class _JobFailure(SetupError):
     """A job failure whose message is safe and more useful than the generic text."""
 
 
+# How long the wizard waits for a browser login, and how often it checks for one.
+LOGIN_WAIT_SECONDS = 600
+LOGIN_CHECK_SECONDS = 1.0
+
 # How the wizard sets up a source that has no client setup yet.
 _SETUP_WITHOUT_DEFAULT = {"flyt": "municipality", "gmail": "file"}
 MAX_MUNICIPALITY_LENGTH = 200
@@ -549,7 +553,7 @@ class SetupService:
         return "Steget er avbrutt."
 
     def _login(self, job: Job, *, replace: bool):
-        from .browser_bootstrap import bootstrap_source, capture_oauth_callback
+        from .browser_bootstrap import BrowserClosedError, bootstrap_source, capture_oauth_callback
 
         source = job.source
         job.message = "Fullfør innloggingen i nettleservinduet. BankID godkjenner du selv."
@@ -558,19 +562,39 @@ class SetupService:
 
             login(self.root, cancelled=job.cancel.is_set)
         elif "browser-bootstrap" in REGISTRY[source].auth_commands:
-            def wait(_prompt):
+            deadline = time.monotonic() + LOGIN_WAIT_SECONDS
+
+            # Returns when the user presses «Jeg er logget inn» or the login is detected.
+            def wait(_prompt, ready):
                 with self.lock:
                     job.phase = "waiting"
-                    job.message = "Logg inn i nettleservinduet. Trykk «Jeg er logget inn» når tjenesten er lastet."
-                deadline = time.monotonic() + 600
+                    job.message = (
+                        "Logg inn i nettleservinduet. Vi merker selv når du er logget inn. "
+                        "Skjer det ikke noe, trykker du «Jeg er logget inn»."
+                    )
+                next_check = time.monotonic()
                 while not job.complete.wait(0.2):
                     if job.cancel.is_set() or time.monotonic() >= deadline:
                         raise SetupError("Innloggingen ble avbrutt.")
+                    if time.monotonic() >= next_check:
+                        if ready():
+                            break
+                        next_check = time.monotonic() + LOGIN_CHECK_SECONDS
                 if job.cancel.is_set():
                     raise SetupError("Innloggingen ble avbrutt.")
-                job.phase = "working"
+                with self.lock:
+                    job.phase = "working"
+                    job.message = "Henter innloggingen fra nettleservinduet …"
 
-            bootstrap_source(self.root, source, replace_existing=replace, wait_for_user=wait)
+            try:
+                bootstrap_source(self.root, source, replace_existing=replace, wait_for_login=wait)
+            except BrowserClosedError:
+                if job.cancel.is_set() or job.logged_out:
+                    raise
+                raise _JobFailure(
+                    "Nettleservinduet ble lukket før innloggingen var ferdig. "
+                    "Velg «Logg inn» for å prøve igjen."
+                ) from None
         else:
             module = auth_module(source)
             if not module.consent_status(self.root)["current"]:
@@ -592,7 +616,8 @@ class SetupService:
             if cancel:
                 self.job.cancel.set()
             elif self.job.phase != "waiting":
-                raise SetupError("Steget venter ikke på en bekreftelse.")
+                # The login was detected just before the click; it is already going on.
+                return
             self.job.complete.set()
 
     def connect_client(self, client: str):

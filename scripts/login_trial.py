@@ -24,8 +24,10 @@ What runs exactly as in a login from the setup wizard:
 4. `live_readers.list_live` reads IST Home through the real reader, from the
    same local service.
 5. Spond, as the wizard does it: `bootstrap_source` opens the Spond login
-   page in a new disposable profile, `_spond_payload` reads the four session
-   fields from exactly one page on the expected HTTPS origin, and
+   page in a new disposable profile, the wait notices by itself that the page
+   holds a login (the presence check reads no values), `_spond_payload` reads
+   the four session fields from exactly one page on the expected HTTPS
+   origin, and
    `spond_auth.import_session` stores the session after a check against a
    fake Spond transport.
 
@@ -484,7 +486,9 @@ class Trial:
             time.sleep(0.2)
         raise TrialError("Innloggingssiden viste ikke knappen Logg inn")
 
-    def page_factory(self, page: bytes) -> tuple[Callable[..., Any], Callable[[str], None]]:
+    def page_factory(
+        self, page: bytes
+    ) -> tuple[Callable[..., Any], Callable[[str, Callable[[], bool]], None]]:
         """A factory and a wait for `bootstrap_source` that answer the login page.
 
         The browser starts on about:blank. Before the first request every
@@ -514,13 +518,21 @@ class Trial:
             state.update(cdp=cdp, session=session, start_url=start_url, served=0)
             return browser
 
-        def wait_for_user(_prompt: str) -> None:
+        def wait_for_login(_prompt: str, ready: Callable[[], bool]) -> None:
             state["served"] = self._serve_page(
                 state["cdp"], state["session"], state["start_url"], page
             )
+            # As in the wizard: the login is noticed without «Jeg er logget inn».
+            deadline = time.monotonic() + self.timeout
+            while time.monotonic() < deadline:
+                if ready():
+                    state["detected"] = True
+                    return
+                time.sleep(0.2)
+            raise TrialError("Innloggingen ble ikke oppdaget")
 
         factory.state = state  # type: ignore[attr-defined]
-        return factory, wait_for_user
+        return factory, wait_for_login
 
     def _serve_page(self, cdp: Any, session: str, start_url: str, page: bytes) -> int:
         import base64
@@ -852,7 +864,7 @@ def spond_trial(trial: Trial, root: Path, steps: Steps) -> None:
         "refreshTokenExpiration": (now + timedelta(days=30)).isoformat(),
     }
     transport = FakeAuthTransport()
-    factory, wait_for_user = trial.page_factory(_spond_page(fields))
+    factory, wait_for_login = trial.page_factory(_spond_page(fields))
     before = len(trial.run_paths)
 
     def browser_step() -> dict[str, Any]:
@@ -868,18 +880,21 @@ def spond_trial(trial: Trial, root: Path, steps: Steps) -> None:
                 root,
                 "spond",
                 browser_factory=factory,
-                wait_for_user=wait_for_user,
+                wait_for_login=wait_for_login,
                 importer=functools.partial(spond_auth.import_session, transport=transport),
                 login_browser=trial.browser,
             )
         tokens_seen = [token for _url, token in transport.gets]
         served = factory.state.get("served", 0)  # type: ignore[attr-defined]
+        detected = factory.state.get("detected", False)  # type: ignore[attr-defined]
         return {
             "page_served": served,
+            "login_detected": detected,
             "remote_verified": imported.get("remote_verified"),
             "token_from_page_used": tokens_seen == [fields["token"]],
             "profile_removed": _profiles_removed(trial, before, root),
             "ok": served == 1
+            and detected is True
             and imported.get("authenticated") is True
             and tokens_seen == [fields["token"]],
         }

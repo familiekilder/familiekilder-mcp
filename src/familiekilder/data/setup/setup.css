@@ -397,6 +397,13 @@ summary {
   background: var(--blue-soft);
   border-color: #bacce6;
 }
+/* A running step stays in view, so «Jeg er logget inn» and «Avbryt» are never scrolled away. */
+.job.active {
+  position: sticky;
+  top: 16px;
+  z-index: 10;
+  box-shadow: 0 6px 18px rgba(32, 51, 72, 0.16);
+}
 .actions {
   display: flex;
   gap: 12px;

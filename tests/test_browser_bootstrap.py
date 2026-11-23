@@ -205,6 +205,43 @@ class BrowserBootstrapTests(unittest.TestCase):
             worker.join(timeout=2)
         self.assertFalse(worker.is_alive())
 
+    def test_pipe_client_skips_the_late_answer_to_a_timed_out_request(self) -> None:
+        request_read, client_write = os.pipe()
+        client_read, response_write = os.pipe()
+        client = browser_bootstrap._PipeCdpClient(client_write, client_read)
+        requests: list[int] = []
+
+        def server() -> None:
+            buffer = bytearray()
+            while len(requests) < 2:
+                buffer.extend(os.read(request_read, 4096))
+                while b"\0" in buffer:
+                    raw, _, rest = bytes(buffer).partition(b"\0")
+                    buffer = bytearray(rest)
+                    requests.append(json.loads(raw)["id"])
+                    if len(requests) == 2:
+                        # The first answer arrives late, after the second request.
+                        for request_id, value in ((requests[0], "late"), (requests[1], "now")):
+                            os.write(
+                                response_write,
+                                browser_bootstrap._CdpFramer.encode(
+                                    {"id": request_id, "result": {"answer": value}}
+                                ),
+                            )
+            os.close(request_read)
+            os.close(response_write)
+
+        worker = threading.Thread(target=server)
+        worker.start()
+        try:
+            with self.assertRaisesRegex(BrowserBootstrapError, "tidsgrensen"):
+                client.call("Target.getTargets", timeout=0.05)
+            self.assertEqual(client.call("Target.getTargets"), {"answer": "now"})
+        finally:
+            client.close()
+            worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
+
     def test_brave_arguments_use_private_pipe_and_disable_persistent_features(self) -> None:
         executable = Path("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")
         profile = self.root / ".private" / "browser-bootstrap" / f"run-{'a' * 32}"
@@ -709,6 +746,402 @@ while True:
         with self.assertRaises(BrowserBootstrapError):
             bootstrap_source(self.root, "unknown")
         self.assertFalse((self.root / ".private").exists())
+
+
+SPOND_FIELDS = {
+    "token": SPOND_ACCESS,
+    "tokenExpiration": "2033-05-18T04:33:20+00:00",
+    "refreshToken": SPOND_REFRESH,
+    "refreshTokenExpiration": "2033-05-19T04:33:20+00:00",
+}
+
+
+class LoginCdp(FakeCdp):
+    """A Spond window the user signs in to while the bootstrap waits.
+
+    `probe_answers` are the page's answers to the presence check, in order;
+    the last one repeats. An answer that is an exception is raised instead.
+    `extractions` are the stored fields the full read sees, in order.
+    """
+
+    def __init__(
+        self,
+        *,
+        probe_answers: list[Any],
+        extractions: list[Any] | None = None,
+        pages: list[list[str]] | None = None,
+    ) -> None:
+        super().__init__(SPOND_ORIGIN)
+        self.probe_expression = browser_bootstrap._spond_probe().expression
+        self.probe_answers = list(probe_answers)
+        self.extractions = list(extractions or [dict(SPOND_FIELDS)])
+        # The page URLs each Target.getTargets sees, in order; the last repeats.
+        self.pages = list(pages or [[f"{SPOND_ORIGIN}/client"]])
+        self.probes = 0
+        self.reads = 0
+
+    @staticmethod
+    def _next(values: list[Any]) -> Any:
+        return values.pop(0) if len(values) > 1 else values[0]
+
+    def call(
+        self,
+        method: str,
+        params: Mapping[str, Any] | None = None,
+        *,
+        session_id: str | None = None,
+        timeout: float = 20.0,
+    ) -> Mapping[str, Any]:
+        self.calls.append((method, dict(params or {}), session_id))
+        if method == "Target.getTargets":
+            urls = self._next(self.pages)
+            if isinstance(urls, BaseException):
+                raise urls
+            return {
+                "targetInfos": [
+                    {"type": "page", "url": url, "targetId": f"target-{index}"}
+                    for index, url in enumerate(urls)
+                ]
+            }
+        if method == "Target.attachToTarget":
+            return {"sessionId": "session-1"}
+        if method == "Runtime.evaluate":
+            if params["expression"] == self.probe_expression:
+                self.probes += 1
+                answer = self._next(self.probe_answers)
+                if isinstance(answer, BaseException):
+                    raise answer
+                return {"result": {"type": "boolean", "value": answer}}
+            self.reads += 1
+            return {"result": {"type": "object", "value": self._next(self.extractions)}}
+        raise AssertionError(f"unexpected fake CDP method: {method}")
+
+
+def imported_metadata(*args: Any, **kwargs: Any) -> Mapping[str, Any]:
+    return {
+        "configured": True,
+        "authenticated": True,
+        "remote_verified": True,
+        "expires_at": "2033-05-18T04:33:20+00:00",
+        "refresh_expires_at": "2033-05-19T04:33:20+00:00",
+        "attachment_hosts": 0,
+        "refresh_marker_cleanup_pending": False,
+    }
+
+
+def wait_until_ready(limit: int = 20):
+    """A wait that never gets a confirmation and only polls the check."""
+
+    calls: list[str] = []
+
+    def wait(prompt: str, ready) -> None:
+        calls.append(prompt)
+        for _ in range(limit):
+            if ready():
+                return
+        raise AssertionError("the login was never detected")
+
+    return wait, calls
+
+
+class LoginDetectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        atomic_write_private_json(
+            spond_client_config_path(self.root),
+            {
+                "api_root": SPOND_API_ROOT,
+                "app_version": "4.62.0",
+                "attachment_hosts": [],
+            },
+        )
+        self.browsers: list[FakeBrowser] = []
+
+    def bootstrap(self, cdp: LoginCdp, **options: Any) -> dict[str, Any]:
+        def factory(profile: Path, url: str, path: Path | str | None) -> FakeBrowser:
+            browser = FakeBrowser(cdp, profile)
+            self.browsers.append(browser)
+            return browser
+
+        return bootstrap_spond(
+            self.root,
+            browser_factory=factory,
+            importer=imported_metadata,
+            **options,
+        )
+
+    def assert_cleaned(self) -> None:
+        self.assertTrue(all(browser.closed for browser in self.browsers))
+        base = self.root / ".private" / "browser-bootstrap"
+        self.assertEqual(list(base.iterdir()), [])
+
+    def test_detected_login_continues_without_confirmation(self) -> None:
+        cdp = LoginCdp(probe_answers=[False, False, True])
+        wait, prompts = wait_until_ready()
+
+        result = self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assertEqual(result["source"], "spond")
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("av oss selv", prompts[0])
+        # Ready only after two positive checks in a row, then one full read.
+        self.assertEqual(cdp.probes, 4)
+        self.assertEqual(cdp.reads, 1)
+        self.assert_cleaned()
+
+    def test_one_positive_check_is_not_enough(self) -> None:
+        cdp = LoginCdp(probe_answers=[True, False, True, True])
+        wait, _ = wait_until_ready()
+
+        self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assertEqual(cdp.probes, 4)
+        self.assertEqual(cdp.reads, 1)
+
+    def test_probe_asks_only_whether_the_values_are_there(self) -> None:
+        probe = browser_bootstrap._spond_probe()
+        expression = probe.expression
+        for key in browser_bootstrap._SPOND_STORAGE_KEYS:
+            self.assertIn(f'"{key}"', expression)
+        self.assertIn("keys.every(", expression)
+        self.assertIn('typeof value === "string" && value.length > 0', expression)
+        self.assertNotIn("result", expression)
+        self.assertNotIn("cookie", expression.lower())
+
+        # Anything other than the boolean true is "not ready", and nothing is kept.
+        cdp = LoginCdp(probe_answers=[dict(SPOND_FIELDS), SPOND_ACCESS, "true", 1, True])
+        answers = [probe(cdp) for _ in range(5)]
+        self.assertEqual(answers, [False, False, False, False, True])
+        self.assertTrue(all(isinstance(answer, bool) for answer in answers))
+        self.assertNotIn(SPOND_ACCESS, repr(vars(probe)))
+        self.assertEqual(cdp.reads, 0)
+        evaluations = [call for call in cdp.calls if call[0] == "Runtime.evaluate"]
+        self.assertTrue(all(call[1]["returnByValue"] for call in evaluations))
+        self.assertTrue(
+            all(call[1]["expression"] == expression for call in evaluations)
+        )
+        # The session for the page is attached once and reused.
+        attaches = [call for call in cdp.calls if call[0] == "Target.attachToTarget"]
+        self.assertEqual(len(attaches), 1)
+
+    def test_probe_errors_and_other_pages_mean_not_yet(self) -> None:
+        cdp = LoginCdp(
+            pages=[
+                ["https://login.example.invalid/authorize"],
+                [f"{SPOND_ORIGIN}/client", f"{SPOND_ORIGIN}/client"],
+                BrowserBootstrapError("Nettleseren svarte ikke innen tidsgrensen"),
+                [f"{SPOND_ORIGIN}/client"],
+            ],
+            probe_answers=[
+                BrowserBootstrapError("Nettleseren avviste DevTools-forespørselen"),
+                True,
+            ],
+        )
+        wait, _ = wait_until_ready()
+
+        result = self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assertEqual(result["source"], "spond")
+        self.assertEqual(cdp.reads, 1)
+        # The failed evaluation dropped the session, so the next check attached
+        # again; the full read attaches once more.
+        attaches = [call for call in cdp.calls if call[0] == "Target.attachToTarget"]
+        self.assertEqual(len(attaches), 3)
+        self.assert_cleaned()
+
+    def test_confirmation_still_continues_without_detection(self) -> None:
+        cdp = LoginCdp(probe_answers=[False])
+        prompts: list[str] = []
+
+        def confirmed(prompt: str, ready) -> None:
+            prompts.append(prompt)
+            self.assertFalse(ready())
+
+        result = self.bootstrap(cdp, wait_for_login=confirmed)
+
+        self.assertEqual(result["source"], "spond")
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(cdp.reads, 1)
+        self.assert_cleaned()
+
+    def test_old_confirmation_callback_is_unchanged(self) -> None:
+        cdp = LoginCdp(probe_answers=[True])
+        prompts: list[str] = []
+
+        self.bootstrap(cdp, wait_for_user=prompts.append)
+
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(cdp.probes, 0)
+        self.assertEqual(cdp.reads, 1)
+
+    def test_both_ways_of_waiting_are_refused(self) -> None:
+        cdp = LoginCdp(probe_answers=[True])
+        with self.assertRaises(BrowserBootstrapError):
+            self.bootstrap(
+                cdp,
+                wait_for_user=lambda prompt: None,
+                wait_for_login=lambda prompt, ready: None,
+            )
+        self.assertEqual(self.browsers, [])
+
+    def test_detected_login_that_cannot_be_read_yet_waits_again(self) -> None:
+        incomplete = dict(SPOND_FIELDS)
+        del incomplete["refreshToken"]
+        cdp = LoginCdp(probe_answers=[True], extractions=[incomplete, dict(SPOND_FIELDS)])
+        wait, prompts = wait_until_ready()
+
+        result = self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assertEqual(result["source"], "spond")
+        self.assertEqual(len(prompts), 2)
+        self.assertEqual(cdp.reads, 2)
+        self.assert_cleaned()
+
+    def test_confirmed_login_that_cannot_be_read_fails(self) -> None:
+        incomplete = dict(SPOND_FIELDS)
+        del incomplete["refreshToken"]
+        cdp = LoginCdp(probe_answers=[False], extractions=[incomplete])
+
+        with self.assertRaises(BrowserBootstrapError) as raised:
+            self.bootstrap(cdp, wait_for_login=lambda prompt, ready: None)
+
+        self.assertNotIn(SPOND_ACCESS, str(raised.exception))
+        self.assertEqual(cdp.reads, 1)
+        self.assert_cleaned()
+
+    def test_detection_stops_after_repeated_failed_reads(self) -> None:
+        incomplete = dict(SPOND_FIELDS)
+        del incomplete["refreshToken"]
+        cdp = LoginCdp(probe_answers=[True], extractions=[incomplete])
+        rounds: list[bool] = []
+
+        def wait(prompt: str, ready) -> None:
+            for _ in range(4):
+                if ready():
+                    rounds.append(True)
+                    return
+            # No longer detected: this is the user's confirmation.
+            rounds.append(False)
+
+        with self.assertRaises(BrowserBootstrapError):
+            self.bootstrap(cdp, wait_for_login=wait)
+
+        automatic = browser_bootstrap._AUTOMATIC_READS
+        self.assertEqual(rounds, [True] * automatic + [False])
+        self.assertEqual(cdp.reads, automatic + 1)
+        self.assert_cleaned()
+
+    def test_closed_window_stops_the_wait(self) -> None:
+        spond = [f"{SPOND_ORIGIN}/client"]
+        cdp = LoginCdp(probe_answers=[False], pages=[[], spond, spond, []])
+        wait, _ = wait_until_ready()
+
+        with self.assertRaises(browser_bootstrap.BrowserClosedError) as raised:
+            self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assertIn("lukket", str(raised.exception))
+        # The empty list before the first page is a slow start, not a closed window.
+        listings = [call for call in cdp.calls if call[0] == "Target.getTargets"]
+        self.assertGreaterEqual(len(listings), 2 + browser_bootstrap._CLOSED_CHECKS)
+        self.assertEqual(cdp.reads, 0)
+        self.assert_cleaned()
+
+    def test_broken_devtools_pipe_stops_the_wait(self) -> None:
+        cdp = LoginCdp(
+            probe_answers=[False],
+            pages=[browser_bootstrap._CdpPipeClosed("DevTools-røret ble lukket uventet")],
+        )
+        wait, _ = wait_until_ready()
+
+        with self.assertRaises(browser_bootstrap.BrowserClosedError):
+            self.bootstrap(cdp, wait_for_login=wait)
+
+        self.assert_cleaned()
+
+    def test_a_wait_that_raises_cancels_the_login(self) -> None:
+        cdp = LoginCdp(probe_answers=[False])
+
+        def cancelled(prompt: str, ready) -> None:
+            raise BrowserBootstrapError("Innloggingen ble avbrutt")
+
+        with self.assertRaisesRegex(BrowserBootstrapError, "avbrutt"):
+            self.bootstrap(cdp, wait_for_login=cancelled)
+
+        self.assertEqual(cdp.reads, 0)
+        self.assert_cleaned()
+
+
+class FakeAutofill:
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+        self.steps = 0
+
+    def step(self, cdp: Any) -> bool:
+        self.steps += 1
+        return False
+
+
+class TerminalWaitTests(unittest.TestCase):
+    def wait(self, autofill: FakeAutofill, ready, *, lines: list[bool], typed: str = "\n"):
+        stdin = io.StringIO(typed)
+        stdin.isatty = lambda: True  # type: ignore[method-assign]
+        output = io.StringIO()
+        with (
+            patch.object(sys, "stdin", stdin),
+            patch.object(browser_bootstrap, "_line_ready", side_effect=lines),
+            contextlib.redirect_stdout(output),
+        ):
+            browser_bootstrap._wait_in_terminal("Logg inn: ", autofill, object(), ready)
+        return output.getvalue()
+
+    def test_terminal_continues_by_itself_and_keeps_filling_the_password(self) -> None:
+        autofill = FakeAutofill(enabled=True)
+        answers = iter([False, False, True])
+
+        output = self.wait(autofill, lambda: next(answers), lines=[False, False])
+
+        self.assertIn("Innloggingen er funnet.", output)
+        self.assertEqual(autofill.steps, 3)
+
+    def test_enter_still_continues(self) -> None:
+        autofill = FakeAutofill(enabled=False)
+
+        output = self.wait(autofill, lambda: False, lines=[False, True])
+
+        self.assertNotIn("funnet", output)
+        self.assertEqual(autofill.steps, 0)
+
+    def test_closed_input_cancels(self) -> None:
+        with self.assertRaisesRegex(BrowserBootstrapError, "avbrutt"):
+            self.wait(FakeAutofill(enabled=False), lambda: False, lines=[True], typed="")
+
+    def test_closed_window_stops_the_terminal_wait(self) -> None:
+        def closed() -> bool:
+            raise browser_bootstrap.BrowserClosedError("Nettleservinduet ble lukket")
+
+        with self.assertRaises(browser_bootstrap.BrowserClosedError):
+            self.wait(FakeAutofill(enabled=False), closed, lines=[False])
+
+    def test_without_a_terminal_only_enter_counts(self) -> None:
+        stdin = io.StringIO("\n")
+        stdin.isatty = lambda: False  # type: ignore[method-assign]
+        ready_calls: list[bool] = []
+
+        def ready() -> bool:
+            ready_calls.append(True)
+            return True
+
+        with patch.object(sys, "stdin", stdin), contextlib.redirect_stdout(io.StringIO()):
+            browser_bootstrap._wait_in_terminal(
+                "Logg inn: ", FakeAutofill(enabled=False), object(), ready
+            )
+            with self.assertRaisesRegex(BrowserBootstrapError, "interaktiv"):
+                browser_bootstrap._wait_in_terminal(
+                    "Logg inn: ", FakeAutofill(enabled=True), object(), ready
+                )
+        self.assertEqual(ready_calls, [])
 
 
 if __name__ == "__main__":

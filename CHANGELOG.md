@@ -2,6 +2,15 @@
 
 ## Ikke utgitt
 
+- Spond-innloggingen fortsetter nå av seg selv når du er logget inn i
+  nettleservinduet, både i veiviseren og med
+  `familiekilder-mcp auth spond browser-bootstrap`. Programmet ser bare etter
+  om innloggingen finnes, ikke på verdiene, før det leser den som før. Skjer det
+  ikke noe, trykker du «Jeg er logget inn» i veiviseren eller Enter i
+  terminalen. Meldingen med knappene blir nå stående synlig øverst i
+  veiviseren mens du logger inn, også når du har rullet ned til tjenesten.
+  Lukker du nettleservinduet før innloggingen er ferdig, sier veiviseren og
+  terminalen fra om det.
 - Hoopit kobles nå til med et personlig tilgangstoken og leses gjennom Hoopits
   offisielle API, i stedet for å bruke Hoopit-appens innlogging. Lag tokenet på
   https://id.hoopit.io/security/access-tokens/ med de tre boksene under «Dine»
