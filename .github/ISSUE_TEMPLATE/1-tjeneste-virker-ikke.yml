@@ -1,0 +1,118 @@
+name: En tjeneste virker ikke
+description: Innlogging, lesing eller oppsett virker ikke for en tjeneste.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Saken er offentlig.** Lim aldri inn innlogging, passord, tokens,
+        øktfiler, callback-adresser, navn på barn eller innhold fra ekte
+        beskjeder. Står noe slikt i en feilmelding, bytt det ut med `…`.
+
+        Er det en sikkerhetsfeil, meld den privat etter
+        [sikkerhetsrutinen](https://github.com/familiekilder/familiekilder-mcp/blob/main/SECURITY.md).
+
+        Se gjerne først om noen alt har meldt fra om samme tjeneste.
+
+  - type: input
+    id: service
+    attributes:
+      label: Tjeneste
+      description: Hvilken tjeneste gjelder det?
+      placeholder: For eksempel Spond
+    validations:
+      required: true
+
+  - type: dropdown
+    id: host
+    attributes:
+      label: Hvor kjører serveren?
+      options:
+        - På datamaskinen
+        - Egen server på Fly.io
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operativsystem
+      description: Systemet på datamaskinen der du logger inn.
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Nettleser for innlogging
+      options:
+        - Brave
+        - Google Chrome
+        - Microsoft Edge
+        - Vet ikke
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Versjon
+      description: Svaret fra `familiekilder-mcp --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: assistant
+    attributes:
+      label: Assistent
+      description: Hvilken assistent bruker du serveren fra?
+      placeholder: For eksempel Claude Desktop, ChatGPT eller Codex
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Hva skjedde?
+      description: |
+        Hva du gjorde, hvilket steg det stoppet på, og hva du ventet skulle
+        skje.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Feilmelding
+      description: |
+        Fra veiviseren eller de siste linjene i terminalen. Fjern navn,
+        adresser og innhold fra ekte beskjeder først.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Rapport fra forhåndssjekken
+      description: |
+        Kjør `familiekilder-mcp doctor` og lim inn hele rapporten. Den
+        utelater stien til dataroten, profilnavn og innhold fra tjenestene,
+        men les den før du deler den.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Før du sender
+      options:
+        - label: >-
+            Saken inneholder ingen innlogging, tokens, øktfiler,
+            callback-adresser, navn på barn eller innhold fra ekte beskjeder.
+          required: true

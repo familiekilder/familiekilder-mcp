@@ -12,9 +12,10 @@ There is no refresh: a token works until it expires or the user withdraws it.
 A 401 from Hoopit marks the token as rejected; a 403 on a member list marks the
 scope that list needs as missing. Both stay until the user connects a new token.
 
-The API does not say whose token it is, so the session keeps a random
-``account_scope`` from the first connection. Replacing the token keeps it;
-logging out ends it. ``read_cache.account_scope`` uses it.
+The adapter does not ask Hoopit whose token it is (the API's ``me/`` is not
+used), so the session keeps a random ``account_scope`` from the first
+connection. Replacing the token keeps it; logging out ends it.
+``read_cache.account_scope`` uses it.
 """
 
 from __future__ import annotations

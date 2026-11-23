@@ -55,7 +55,7 @@ def account_scope(root, source):
         return None
     carried = session.get('account_scope') if isinstance(session, dict) else None
     if isinstance(carried, str) and re.fullmatch(r'[0-9a-f]{64}', carried):
-        # A token session (Hoopit) stores its own scope: the API does not say
+        # A token session (Hoopit) stores its own scope: the adapter does not ask
         # whose token it is, so the binding lasts from connection to logout.
         return carried
     identity = {key: session[key] for key in (

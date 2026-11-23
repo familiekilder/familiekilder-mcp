@@ -85,7 +85,7 @@ def get_item(root, m, c, ref):
         missing = m.HoopitItemUnavailable(
             "Fant ikke innlegget i Hoopit. Det kan være slettet eller eldre enn listen viser."
         )
-        # No single-post endpoint for members: find the post in the newest-first list.
+        # The single-post endpoint is not used: find the post in the newest-first list.
         try:
             for page in m.iter_pages(
                 c, "posts", label="innlegg", maximum_pages=m.MAX_PAGES_PER_FEED

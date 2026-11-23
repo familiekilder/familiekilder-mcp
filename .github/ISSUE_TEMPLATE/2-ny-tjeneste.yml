@@ -1,0 +1,73 @@
+name: Ønsk en ny tjeneste
+description: Be om støtte for en app eller nettside fra skole, barnehage eller fritid.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Se gjerne først om noen alt har bedt om samme tjeneste. Gi den i så fall
+        en tommel opp i stedet for å lage en ny sak.
+
+        **Saken er offentlig.** Ikke legg ved skjermbilder eller tekst med navn
+        på barn, innhold fra ekte beskjeder eller innlogging.
+
+  - type: input
+    id: service
+    attributes:
+      label: Tjeneste
+      description: Hva heter tjenesten?
+      placeholder: Navnet slik det står i appen
+    validations:
+      required: true
+
+  - type: dropdown
+    id: used-for
+    attributes:
+      label: Hva bruker dere den til?
+      multiple: true
+      options:
+        - Skole
+        - SFO
+        - Barnehage
+        - Idrett og fritid
+        - Annet
+    validations:
+      required: true
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: Hvordan bruker dere den?
+      options:
+        - App
+        - Nettside
+        - Både app og nettside
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: Lenke
+      description: Tjenestens nettside, eller appen i App Store eller Google Play.
+    validations:
+      required: false
+
+  - type: textarea
+    id: wanted
+    attributes:
+      label: Hva vil du at assistenten skal lese?
+      description: For eksempel beskjeder, aktiviteter, kalender eller vedlegg.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Kan du hjelpe til?
+      description: |
+        En ny kobling må prøves med en ekte konto. Vil du lage den selv, start
+        med [veiledningen for nye tjenester](https://github.com/familiekilder/familiekilder-mcp/blob/main/docs/adding-a-service.md).
+      options:
+        - label: Jeg har en konto og kan prøve koblingen.
+        - label: Jeg vil gjerne lage koblingen selv.

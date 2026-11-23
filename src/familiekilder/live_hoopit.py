@@ -42,7 +42,7 @@ def _day(value):
 
 
 def thread_context(runtime, post_id):
-    """A post's full comment thread with IDs; Hoopit has no comments on occurrences."""
+    """A post's full comment thread with IDs; comments on occurrences are not read."""
 
     runtime.config.require("hoopit")
     post_id = _id(post_id)
@@ -235,13 +235,13 @@ def register(server, runtime):
     from .source_server import READ, WRITE, safe_tool
 
     def hoopit_thread_context(post_id: str) -> dict:
-        """Hent fersk kommentartråd med kommentar-ID-er for ett Hoopit-innlegg. Hoopits API har ikke kommentarer på aktiviteter og ingen lest-markering."""
+        """Hent fersk kommentartråd med kommentar-ID-er for ett Hoopit-innlegg. Kommentarer på aktiviteter leses ikke, og ingenting merkes som lest."""
         return thread_context(runtime, post_id)
 
     def hoopit_participation_context(
         event_id: str, occurrence_id: str, day: str | None = None
     ) -> dict:
-        """Les aktiviteten og familiens svar (deg og egne barn). day (ÅÅÅÅ-MM-DD) fra referansen gjør oppslaget raskere. Svarfrist, betaling og oppmøte gir ikke Hoopits API."""
+        """Les aktiviteten og familiens svar (deg og egne barn). day (ÅÅÅÅ-MM-DD) fra referansen gjør oppslaget raskere. Svarfrist og betaling er ikke med."""
         return participation_context(runtime, event_id, occurrence_id, day)
 
     def hoopit_set_participation(

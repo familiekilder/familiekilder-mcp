@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Spørsmål og hjelp
+    url: https://github.com/familiekilder/familiekilder-mcp/discussions/categories/q-a
+    about: Still spørsmål om oppsett og bruk under Discussions.
+  - name: Del en prompt
+    url: https://github.com/familiekilder/familiekilder-mcp/discussions/categories/show-and-tell
+    about: Del prompter som virker, under Discussions.
+  - name: Meld en sikkerhetsfeil
+    url: https://github.com/familiekilder/familiekilder-mcp/security/policy
+    about: Meld sikkerhetsfeil privat, aldri i en offentlig sak.

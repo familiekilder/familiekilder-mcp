@@ -77,10 +77,15 @@ aktiviteter med familiens svar. `hoopit_thread_context` gir kommentartråden til
 ett innlegg med ID-er. `hoopit_participation_context` gir familiens svar på én
 aktivitet. Ingen av leseverktøyene sender noe eller endrer svar.
 
-API-et har ikke chatter, vedlegg, varsler, kontaktgrupper, profil eller
-skriving av kommentarer, så det har ikke programmet heller. Aktiviteter har
-tittel, type, tid, oppmøte, sted, avlysning og svar, men ikke beskrivelse,
-svarfrist eller betaling.
+Per 23. november 2026, etter Hoopits publiserte skjema, har API-et ikke
+chatter, vedlegg på innlegg, varsler, kontaktgrupper eller betaling, så det har
+ikke programmet heller. API-et har hvem tokenet tilhører, listen over barn, én
+aktivitet med beskrivelse og svarfrist, og kommentarer på aktiviteter, men
+programmet leser ikke det ennå; se
+[det programmet ikke leser ennå](hoopit-ingestion.md#det-api-et-har-som-programmet-ikke-leser-ennå).
+Aktivitetene her har derfor tittel, type, tid, oppmøte, sted, avlysning og
+svar, men ikke beskrivelse eller svarfrist. API-et kan også skrive kommentarer
+på innlegg, men serveren tilbyr bare lesing.
 
 ## IST Home
 

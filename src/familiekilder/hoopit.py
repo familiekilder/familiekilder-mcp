@@ -21,11 +21,18 @@ without a pause. A 429 is never retried in the same run: its ``Retry-After``
 is stored and the run stops. Network failures and 5xx answers also store a
 pause. The package's shared budget (``request_budget``) applies on top.
 
-The API has no update time for posts or occurrences, so the adapter keeps a
-small private list of the occurrence versions it has seen
+Posts have no update time. Occurrences have ``updated_at``, but Hoopit
+documents that an answer or a comment never moves it and that an edit to the
+event may not either, while the item includes the family's answers. So the
+adapter keeps a small private list of the occurrence versions it has seen
 (``hoopit-occurrence-versions.json``: IDs, hashes and times only). An
 occurrence's ``changed_at`` is when this installation first saw its current
 version.
+
+Hoopit's schema (23 November 2026) also has member endpoints this adapter does
+not use: ``me/``, ``me/children/``, one occurrence with its description and
+answer deadline, an occurrence's comments, one post, and a feed of post
+comments since a time. See docs/hoopit-ingestion.md.
 """
 
 from __future__ import annotations
@@ -990,8 +997,9 @@ def find_occurrence(
 ) -> dict[str, Any]:
     """The one occurrence with these IDs, from the member occurrence list.
 
-    Members have no detail endpoint. With the occurrence's day the lookup is a
-    few days wide; without it, a wide window is paged.
+    The member detail endpoint is not used, so the item is built from the same
+    list row as in ``hoopit_list_items``. With the occurrence's day the lookup
+    is a few days wide; without it, a wide window is paged.
     """
 
     event_id = identifier(event_id, "aktivitets-ID")

@@ -1,5 +1,9 @@
 # familiekilder-mcp
 
+[![Kontroll](https://github.com/familiekilder/familiekilder-mcp/actions/workflows/check.yml/badge.svg)](https://github.com/familiekilder/familiekilder-mcp/actions/workflows/check.yml)
+[![Lisens: Apache-2.0](https://img.shields.io/badge/lisens-Apache--2.0-blue)](LICENSE)
+[![Python 3.11 eller nyere](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+
 Koble AI-assistenten din til beskjeder, aktiviteter og vedlegg fra skole,
 barnehage og fritid. Programmet er en **MCP-server**: en kobling som lar
 assistenten lese fra tjenestene du bruker, med din egen innlogging.
@@ -16,8 +20,14 @@ Vi jobber med støtte for MyKid og for skole og SFO i Flyt.
 Gmail er ikke med: Claude og ChatGPT har sine egne Gmail-tilkoblinger. Slå på
 den i assistenten, så kan den bruke e-posten sammen med tjenestene her.
 
+I Danmark bruker skoler og barnehager én felles plattform, Aula, og prosjektet
+[aula-mcp](https://github.com/Casperjuel/aula-mcp) kobler assistenten til den.
+I Norge har skolen, barnehagen og hver idrett ofte sin egen app. Dette
+prosjektet samler dem, og er inspirert av aula-mcp.
+
 Savner du en tjeneste? Opprett en sak på GitHub med navnet på tjenesten,
-eller send en pull request hvis du vil bidra med en kobling.
+eller send en pull request hvis du vil
+[bidra med en kobling](CONTRIBUTING.md).
 
 ## Serveren er din
 
@@ -169,4 +179,7 @@ Endrer en tjeneste appen sin, kan koblingen slutte å virke til den er rettet.
 [Hva tjenestene støtter](docs/service-capabilities.md) ·
 [Prompter](docs/oppskrifter.md) ·
 [Feilsøking og bidrag](docs/kom-i-gang.md#hjelp-og-bidrag) ·
+[Bidra](CONTRIBUTING.md) ·
+[Sikkerhet](SECURITY.md) ·
+[Arkitektur](docs/arkitektur.md) ·
 [Apache-2.0](LICENSE)

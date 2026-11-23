@@ -100,19 +100,23 @@ Når en grense nås (sider, innlegg, aktiviteter eller forespørsler), gir liste
 det som er lest, med `complete=false`, og grensen står i loggen. Lesingen feiler
 ikke av den grunn.
 
-API-et har ikke et eget kall for ett innlegg eller én aktivitet for vanlige
-medlemmer. `hoopit_get_item` finner derfor innlegget i listen og aktiviteten i
-aktivitetslisten. Referansene har med dagen (`day`): opprettelsesdagen for et
-innlegg og dagen for en aktivitet. Innleggsoppslaget stopper når listen kommer
-til innlegg som er eldre, og aktivitetsoppslaget holder seg til noen få dager.
-Finnes elementet ikke, svarer oppslaget at det ikke ble funnet.
+`hoopit_get_item` bruker ikke Hoopits kall for ett innlegg eller én aktivitet.
+Det finner innlegget i innleggslisten og aktiviteten i aktivitetslisten, så
+elementet bygges av de samme feltene som i `hoopit_list_items` og blir likt.
+Referansene har med dagen (`day`): opprettelsesdagen for et innlegg og dagen for
+en aktivitet. Innleggsoppslaget stopper når listen kommer til innlegg som er
+eldre, og aktivitetsoppslaget holder seg til noen få dager. Finnes elementet
+ikke, svarer oppslaget at det ikke ble funnet. Hva kallene for ett element gir i
+tillegg, står i [det programmet ikke leser ennå](#det-api-et-har-som-programmet-ikke-leser-ennå).
 
-API-et oppgir ikke når et innlegg eller en aktivitet sist ble endret. For innlegg
-er endringstiden den nyeste av publiseringen og kommentarene. For aktiviteter
-husker programmet hvilken versjon det har sett
-(`hoopit-occurrence-versions.json`, bare ID-er, hasher og tidspunkt), og
-`changed_at` er når denne versjonen ble sett første gang. En aktivitet som ikke
-er endret, beholder tidspunktet.
+Hoopits innlegg har ingen endringstid. For innlegg er endringstiden den nyeste av
+publiseringen og kommentarene. Aktiviteter har `updated_at`, men etter Hoopits
+beskrivelse flytter den seg aldri når noen svarer eller kommenterer, og ikke
+alltid når aktiviteten endres. Elementet har med familiens svar, så programmet
+bruker ikke `updated_at`. Det husker i stedet hvilken versjon av hver aktivitet
+det har sett (`hoopit-occurrence-versions.json`, bare ID-er, hasher og
+tidspunkt), og `changed_at` er når denne versjonen ble sett første gang. En
+aktivitet som ikke er endret, beholder tidspunktet.
 
 Hver kildereferanse har bare ID-er og dagen. Kilde-ID-en er `post:<id>` og
 `occurrence:<aktivitet>:<forekomst>`, og lenken går til Hoopit-appen
@@ -141,23 +145,56 @@ melding om full dekning.
 
 ## Det Hoopits API ikke har
 
-Disse funksjonene er ikke med, fordi API-et ikke har dem:
+Per 23. november 2026, etter Hoopits publiserte skjema
+(`https://api.hoopit.io/external/docs/schema/`), har API-et ikke dette, så det
+er heller ikke med her:
 
 - chatter (Stream), og å sende eller svare i chat
-- vedlegg og bilder på innlegg
+- vedlegg og bilder på innlegg (bilder finnes bare på kommentarer)
 - varsler
-- kontaktgrupper og mottakere
-- å skrive kommentarer
-- profil og liste over barn
-- beskrivelse, svarfrist, betaling og kommentarer på aktiviteter
-- når et innlegg eller en aktivitet sist ble endret
+- mottakerne av et innlegg, og kontaktgrupper for vanlige medlemmer
+- betaling for aktiviteter
+- å skrive kommentarer på aktiviteter
+- når et innlegg sist ble endret
+
+## Det API-et har som programmet ikke leser ennå
+
+Skjemaet har også disse kallene for vanlige medlemmer. Programmet bruker dem
+ikke, og de er ikke prøvd her. Tilgangene de krever, dekkes av de tre boksene
+under «Dine» som du krysser av for, så tokenet trenger ingen nye bokser for å
+lese dem.
+
+| Kall | Tilgang | Gir |
+|---|---|---|
+| `GET me/` | alle tokens | Hvem tokenet virker som: ID og fullt navn |
+| `GET me/children/` | `events:read`, `posts:read` eller `events:respond` | Barna du styrer: ID og fullt navn |
+| `GET me/events/{id}/occurrences/{id}/` | `events:read` | Én aktivitet med feltene fra listen og i tillegg beskrivelse (`description`) og svarfrist (`response_deadline`) |
+| `GET me/events/{id}/occurrences/{id}/comments/` | `events:read` | Kommentarer og svar på én aktivitet, eldste først |
+| `GET posts/{id}/` | `posts:read` | Ett innlegg, med de samme feltene som i listen |
+| `GET me/post-comments/?since=` | `posts:read` | Kommentarer og svar laget fra et tidspunkt, på innleggene du eller barna kan lese, med innleggets ID |
+
+Kommentarer på innlegg og aktiviteter har `images` (ID og adresse per bilde).
+Programmet tar bare med teksten. `me/occurrences/`, `me/posts/` og
+`me/post-comments/` finnes også under `users/{person}/`, for deg eller ett av
+barna.
+
+Skjemaet har dessuten `POST posts/{id}/comments/`, som skriver en kommentar
+eller et svar på en kommentar som deg, med tilgangen `posts:comment`. Programmet
+tilbyr bare lesing og ber ikke om den tilgangen. Kallene som krever boksene
+under «Som administrator» (`club.events:read` og `club.members:read`), virker
+bare for administratorer i klubber som har slått på API-tilgang, og brukes ikke
+her.
 
 ## Kontobinding
 
-API-et viser ikke hvem tokenet tilhører. Programmet gir derfor tokenøkten en
+Programmet spør ikke Hoopit hvem tokenet tilhører. Det gir tokenøkten en
 tilfeldig kontobinding første gang du kobler til. Mellomlagrede oppslag hører
 til denne bindingen. Bytter du token, beholdes den; logger du ut, starter neste
 token en ny. Vil du bytte til en annen Hoopit-konto, logg ut først.
+
+API-et har `GET me/` (se over), men programmet bruker det ikke til bindingen. Å
+binde til Hoopit-kontoen i stedet ville endre bindingen for tokenøkter som
+finnes, og mellomlagrede oppslag fra før ville ikke bli brukt igjen.
 
 ## Prøv tokenet uten å lagre det
 
