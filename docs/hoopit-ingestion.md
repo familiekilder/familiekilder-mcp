@@ -160,9 +160,8 @@ er heller ikke med her:
 ## Det API-et har som programmet ikke leser ennå
 
 Skjemaet har også disse kallene for vanlige medlemmer. Programmet bruker dem
-ikke, og de er ikke prøvd her. Tilgangene de krever, dekkes av de tre boksene
-under «Dine» som du krysser av for, så tokenet trenger ingen nye bokser for å
-lese dem.
+ikke ennå. Tilgangene de krever, dekkes av de tre boksene under «Dine» som du
+krysser av for, så tokenet trenger ingen nye bokser for å lese dem.
 
 | Kall | Tilgang | Gir |
 |---|---|---|
@@ -172,6 +171,11 @@ lese dem.
 | `GET me/events/{id}/occurrences/{id}/comments/` | `events:read` | Kommentarer og svar på én aktivitet, eldste først |
 | `GET posts/{id}/` | `posts:read` | Ett innlegg, med de samme feltene som i listen |
 | `GET me/post-comments/?since=` | `posts:read` | Kommentarer og svar laget fra et tidspunkt, på innleggene du eller barna kan lese, med innleggets ID |
+
+En manuell prøve 23. november 2026 bekreftet at de to kallene for én
+aktivitetsforekomst returnerte beskrivelse og kommentarer. Feltet
+`response_deadline` var tomt i forekomstene som ble prøvd. En utfylt svarfrist
+og de øvrige kallene i tabellen gjenstår å prøve.
 
 Kommentarer på innlegg og aktiviteter har `images` (ID og adresse per bilde).
 Programmet tar bare med teksten. `me/occurrences/`, `me/posts/` og
