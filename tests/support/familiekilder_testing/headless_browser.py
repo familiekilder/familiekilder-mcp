@@ -82,6 +82,9 @@ def _candidate_paths(browser_id: str) -> tuple[Path, ...]:
     return ()
 
 
+START_ATTEMPTS = 3
+
+
 def find_browser(browser: str | None = None) -> Path | None:
     """Return the installed test browser executable, or None if unavailable.
 
@@ -358,14 +361,22 @@ class HeadlessBrowser:
         self._page: BrowserPage | None = None
 
     def __enter__(self) -> HeadlessBrowser:
-        self._profile = tempfile.TemporaryDirectory(prefix="familiekilder-headless-")
-        try:
-            self._launch(Path(self._profile.name))
-            self._page = self.new_page("about:blank")
-        except BaseException:
-            self.close()
-            raise
-        return self
+        # A loaded CI machine sometimes never gets an answer from a new browser.
+        # Only the start is tried again, with a new profile; never a test.
+        for attempt in range(1, START_ATTEMPTS + 1):
+            self._profile = tempfile.TemporaryDirectory(prefix="familiekilder-headless-")
+            try:
+                self._launch(Path(self._profile.name))
+                self._page = self.new_page("about:blank")
+                return self
+            except BrowserBootstrapError:
+                self.close()
+                if attempt == START_ATTEMPTS:
+                    raise
+            except BaseException:
+                self.close()
+                raise
+        raise AssertionError("unreachable")
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
