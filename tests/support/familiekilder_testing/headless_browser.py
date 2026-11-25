@@ -280,11 +280,53 @@ class BrowserPage:
         coords = self.wait_for(expression, timeout=timeout)
         return float(coords[0]), float(coords[1])
 
+    def _click_element(self, locator_js: str, *, timeout: float) -> None:
+        """Click until the real mouse click lands on the element.
+
+        A page can move its content between the measurement and the click. A
+        click that would land elsewhere is stopped before the page sees it, so
+        it has no effect, and the element is measured again.
+        """
+
+        arm = (
+            "(() => {"
+            "  if (window.__testClick) document.removeEventListener('click', window.__testClick.handler, true);"
+            "  const state = { result: null };"
+            "  state.handler = (event) => {"
+            "    document.removeEventListener('click', state.handler, true);"
+            f"    const el = {locator_js};"
+            "    state.result = el && el.contains(event.target) ? 'hit' : 'miss';"
+            "    if (state.result === 'miss') {"
+            "      event.preventDefault();"
+            "      event.stopImmediatePropagation();"
+            "    }"
+            "  };"
+            "  document.addEventListener('click', state.handler, true);"
+            "  window.__testClick = state;"
+            "  return true;"
+            "})()"
+        )
+        deadline = time.monotonic() + timeout
+        while True:
+            x, y = self._wait_for_center(locator_js, timeout=max(0.1, deadline - time.monotonic()))
+            self.evaluate(arm)
+            self._click_point(x, y)
+            # The click has been handled when the mouse release returns. A page
+            # that has navigated away no longer has the state: it was a hit.
+            try:
+                result = self.evaluate("window.__testClick ? window.__testClick.result : 'hit'")
+            except BrowserBootstrapError:
+                return
+            if result == "hit":
+                return
+            if time.monotonic() > deadline:
+                raise AssertionError(f"The click never landed on: {locator_js}")
+            time.sleep(0.05)
+
     def click(self, selector: str, *, timeout: float = 15.0) -> None:
         """Click the first visible enabled element matching `selector` with real CDP mouse input."""
 
-        x, y = self._wait_for_center(f"document.querySelector({json.dumps(selector)})", timeout=timeout)
-        self._click_point(x, y)
+        self._click_element(f"document.querySelector({json.dumps(selector)})", timeout=timeout)
 
     def click_text(self, selector: str, text: str, *, timeout: float = 15.0) -> None:
         """Click the first visible enabled element matching `selector` whose trimmed text equals `text`."""
@@ -294,8 +336,7 @@ class BrowserPage:
             f"(node) => (node.textContent || '').trim() === {json.dumps(text)}"
             ")"
         )
-        x, y = self._wait_for_center(locator, timeout=timeout)
-        self._click_point(x, y)
+        self._click_element(locator, timeout=timeout)
 
     def fill(self, selector: str, text: str, *, timeout: float = 15.0) -> None:
         """Focus an input with a real click, clear it, and insert `text` via CDP Input.insertText."""

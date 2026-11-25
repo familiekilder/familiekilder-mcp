@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+from urllib.parse import quote
 
 from familiekilder.browsers import BrowserBootstrapError
 from familiekilder_testing import headless_browser
@@ -54,6 +55,36 @@ class StartTests(unittest.TestCase):
             runs += 1
             raise BrowserBootstrapError("inside the test")
         self.assertEqual((runs, len(browser.profiles)), (1, 1))
+
+
+MOVING_PAGE = """<!doctype html><body style="margin:0">
+<div id="space" style="height:0"></div>
+<button id="right" style="display:block;width:200px;height:60px">right</button>
+<button id="wrong" style="position:absolute;left:0;top:0;width:200px;height:60px;display:none">wrong</button>
+<script>
+window.clicks = [];
+for (const id of ['right', 'wrong']) {
+  document.getElementById(id).addEventListener('click', () => window.clicks.push(id));
+}
+let moves = 0;
+document.addEventListener('mousemove', () => {
+  moves += 1;
+  if (moves > 1) return;
+  document.getElementById('space').style.height = '200px';
+  document.getElementById('wrong').style.display = 'block';
+}, true);
+</script>"""
+
+
+class ClickTests(unittest.TestCase):
+    def test_a_click_on_moved_content_hits_the_right_element_once(self) -> None:
+        executable = headless_browser.browser_or_skip(self)
+        with headless_browser.HeadlessBrowser(executable) as browser:
+            page = browser.page
+            page.navigate("data:text/html," + quote(MOVING_PAGE))
+            page.wait_for("window.clicks && document.readyState === 'complete'")
+            page.click("#right")
+            self.assertEqual(page.evaluate("window.clicks"), ["right"])
 
 
 if __name__ == "__main__":
