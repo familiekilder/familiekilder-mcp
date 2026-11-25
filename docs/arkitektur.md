@@ -146,6 +146,67 @@ utestenging ([mellomlagring](read-cache.md)):
   døgn per installasjon, som stopper før sending
   ([`request_budget.py`](../src/familiekilder/request_budget.py)).
 
+## Hvorfor har veiviseren en fast oppsettsside og fast port?
+
+En lokal veiviser på tilfeldig port blir borte som død fane så snart prosessen
+avsluttes, uansett årsak. Derfor
+bruker `familiekilder-mcp setup` som standard fast port `28417` på `127.0.0.1`
+(`SETUP_PORT` i [`setup_page.py`](../src/familiekilder/setup_page.py)) og åpner
+den statiske oppsettssiden
+`https://familiekilder.github.io/familiekilder-mcp/oppsett/` (publisert fra
+`pages/` med GitHub Pages). Siden overlever at veiviseren stopper, viser hvordan
+den startes igjen uten ny `pip`-installasjon, og lenker videre til
+`http://127.0.0.1:28417/`. All innlogging og lagring skjer fortsatt bare lokalt
+i veiviseren.
+
+Oppsettssiden henter bare én liten statusrute og har ingen ressurser utenfra,
+ingen lagring og streng CSP (`connect-src http://127.0.0.1:28417`). På den
+lokale siden i [`setup_web.py`](../src/familiekilder/setup_web.py) er vakten
+strammet inn rundt dette:
+
+- **Statusruten (`GET /status`).** Ruten sammenligner rå sti før den vanlige
+  vakten, krever nøyaktig én `Host` lik serverens, og tillater høyst én
+  `Origin`: enten ingen, serverens egen eller nøyaktig
+  `https://familiekilder.github.io` (`PAGES_ORIGIN`). Uten `Origin` må
+  `Sec-Fetch-Site` mangle eller være `none` eller `same-origin`. Bare når
+  `Origin` er nøyaktig `PAGES_ORIGIN`, sendes `Access-Control-Allow-Origin`
+  (aldri `*`, aldri credentials), og `Vary: Origin` sendes alltid. Svaret er
+  bare `{"app": "familiekilder-mcp", "protocol": 1}` — ingen profil, datamappe,
+  innlogging eller token eksponeres. `OPTIONS` støttes fortsatt ikke.
+- **Navigasjonsunntak for `GET /`.** Vanlige kryssnettstedsforespørsler avvises
+  fortsatt med 403, og alle `/api/*`-kall krever både per-prosess
+  `X-Setup-Token`, riktig `Host` og (på `POST`) serverens egen `Origin`. Det
+  eneste unntaket er rå `GET /` uten `Origin` med nøyaktig én av hver av
+  `Sec-Fetch-Site: cross-site`, `Sec-Fetch-Mode: navigate` og
+  `Sec-Fetch-Dest: document`. Da virker en vanlig lenke fra oppsettssiden
+  (`target="_blank" rel="noopener noreferrer"`) også når nettleseren blokkerer
+  `fetch` til loopback (som avslått tillatelse eller Safari). `/` svarer med
+  `Cross-Origin-Opener-Policy: same-origin`, `X-Frame-Options: DENY` og
+  `frame-ancestors 'none'`.
+- **Én instans per datamappe (lås og markør).** `serve()` tar først en
+  ikke-blokkerende prosesslås (`setup` i `private_lock.py`) i dataroten. Når
+  serveren har bundet, skriver den `.private/setup-server.json` atomisk med
+  port, tilfeldig kjøre-ID (`instance`), protokoll og en SHA-256-hash over
+  pakkens `.py`- og `data/setup`-filer. Er låsen opptatt, leser en ny
+  `setup`-kommando markøren og spør `/status` med `X-Setup-Instance` i opptil
+  15 sekunder (hodet avvises med 403 hvis `Origin` er til stede, gir 409 ved
+  feil kjøre-ID og 503 når veiviseren lukker). Svarer samme versjon og port,
+  gjenbrukes den kjørende veiviseren; ved annen versjon eller annen `--port`
+  avvises starten uten å drepe noen prosess. På Windows settes
+  `SO_EXCLUSIVEADDRUSE` (ingen portdeling) og port `28417` prøves på nytt i
+  opptil 10 sekunder før fallback til ledig port.
+- **Kjente avgrensninger.** Alle GitHub Pages-sider under
+  `https://familiekilder.github.io` deler opprinnelse og kan derfor lese
+  `/status` (men ikke veiviseren eller `/api/*`). Andre lokale OS-brukere og
+  programmer på samme maskin kan nå `127.0.0.1:28417` eller ta porten før
+  veiviseren starter; andre OS-brukere regnes som betrodde i første versjon.
+  Navigasjonsunntaket på `/` gjør også at ethvert nettsted kan åpne veiviseren
+  i en ny fane uten å lese den, og i teorien prøve en ettklikksfelle
+  (dobbeltklikkfelle) mot en knapp som «Slå av» eller «Avslutt oppsett».
+  Innlogging krever derimot dialog og eksplisitte avkryssinger; en sperre som
+  ignorerer første klikk etter fokusbytte ville også truffet «Jeg er logget
+  inn» og er derfor ikke lagt inn.
+
 ## Hvorfor er egen vert et eget, valgfritt oppsett?
 
 Standard er lokal bruk over stdio: innloggingene blir på datamaskinen, og ingen

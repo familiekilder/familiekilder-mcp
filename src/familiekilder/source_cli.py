@@ -223,9 +223,24 @@ def build_parser(
         doctor.add_argument("--json", action="store_true", help="Skriv rapporten som JSON")
 
     if program.allow_setup:
+        from . import setup_page
+
         setup = sub.add_parser("setup", help="Åpne lokalt oppsett i nettleseren")
         setup.set_defaults(handler=_run_setup)
-        setup.add_argument("--port", type=int, default=0, help="Lokal port; standard velger en ledig")
+        setup.add_argument(
+            "--port",
+            type=int,
+            default=None,
+            help=(
+                f"Lokal port; standard er fast port {setup_page.SETUP_PORT} "
+                "(0 velger en ledig port)"
+            ),
+        )
+        setup.add_argument(
+            "--local",
+            action="store_true",
+            help="Åpne den lokale veiviseren direkte i stedet for den faste oppsettssiden",
+        )
         setup.add_argument("--no-open", action="store_true", help="Vis adressen uten å åpne nettleseren")
 
     if program.allow_setup:
@@ -637,6 +652,7 @@ def _run_setup(args: argparse.Namespace, config: Config) -> int:
         config.root,
         port=args.port,
         open_browser=not args.no_open,
+        local=args.local,
         root_source=root_source(args.root, args.profile),
     )
 

@@ -1,5 +1,8 @@
 'use strict';
 
+const SETUP_PORT = 28417;
+const PAGES_URL = 'https://familiekilder.github.io/familiekilder-mcp/oppsett/';
+const onFixedPort = Number(window.location.port) === SETUP_PORT;
 const token = document.querySelector('meta[name="setup-token"]').content;
 const byId = (id) => document.getElementById(id);
 let currentState = null;
@@ -7,6 +10,7 @@ let selectedSource = null;
 let polling = false;
 let busy = false;
 let closed = false;
+let refreshErrorKind = null;
 let renderedServices = '';
 let municipalities = null;
 let doctorReport = null;
@@ -20,15 +24,36 @@ async function api(path, value) {
     options.body = JSON.stringify(value);
   }
   const response = await fetch(path, options);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Steget kunne ikke fullføres.');
+  let result = {};
+  try {
+    result = await response.json();
+  } catch (_ignored) {
+    result = {};
+  }
+  if (!response.ok) {
+    const failure = new Error(result.error || 'Steget kunne ikke fullføres.');
+    failure.status = response.status;
+    throw failure;
+  }
   return result;
 }
 
 function error(message) {
-  byId('error').textContent = message;
-  byId('error').hidden = !message;
+  refreshErrorKind = null;
+  const box = byId('error');
+  box.replaceChildren();
+  box.textContent = message;
+  box.hidden = !message;
   if (message) showInfo('');
+}
+
+function showErrorNodes(kind, nodes) {
+  const box = byId('error');
+  if (refreshErrorKind === kind && !box.hidden) return;
+  refreshErrorKind = kind;
+  box.replaceChildren(...nodes);
+  box.hidden = false;
+  showInfo('');
 }
 
 function showInfo(message) {
@@ -310,6 +335,7 @@ function render(state) {
   renderTokenJob(state);
   busy = !!state.job && ['working', 'waiting'].includes(state.job.phase);
   byId('version').textContent = `familiekilder-mcp ${state.version}`;
+  byId('data-root').textContent = state.data_root ? `Datamappe: ${state.data_root}` : '';
   renderServices(state);
   const count = state.services.filter(
     (source) => source.enabled && source.state === 'connected',
@@ -444,13 +470,56 @@ async function copyDoctor() {
   }
 }
 
+function pagesLink(label) {
+  const link = document.createElement('a');
+  link.href = PAGES_URL;
+  link.textContent = label;
+  return link;
+}
+
+function codeNode(text) {
+  const node = document.createElement('code');
+  node.textContent = text;
+  return node;
+}
+
 async function refresh() {
   if (polling || closed) return;
   polling = true;
   try {
-    render(await api('/api/state'));
+    const state = await api('/api/state');
+    if (refreshErrorKind !== null) error('');
+    render(state);
   } catch (exception) {
-    error('Oppsettet svarer ikke. Start familiekilder-mcp setup på nytt hvis vinduet er lukket.');
+    if (exception && exception.status === 403) {
+      const message = document.createElement('p');
+      message.textContent =
+        'Oppsettsvinduet er utløpt. Last siden på nytt for å koble til på nytt.';
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      actions.append(button('Last siden på nytt', 'secondary', () => window.location.reload()));
+      showErrorNodes('expired', [message, actions]);
+    } else if (exception && typeof exception.status === 'number') {
+      const message = document.createElement('p');
+      message.textContent = exception.message || 'Oppsettet svarer ikke akkurat nå.';
+      showErrorNodes('http', [message]);
+    } else if (onFixedPort) {
+      const message = document.createElement('p');
+      message.append(
+        'Oppsettet svarer ikke lenger. Gå til ',
+        pagesLink('oppsettssiden'),
+        ' for å åpne det igjen.',
+      );
+      showErrorNodes('offline', [message]);
+    } else {
+      const message = document.createElement('p');
+      message.append(
+        'Oppsettet svarer ikke lenger. Åpne det igjen fra terminalen med ',
+        codeNode('familiekilder-mcp setup'),
+        '.',
+      );
+      showErrorNodes('offline', [message]);
+    }
   } finally {
     polling = false;
   }
@@ -466,7 +535,23 @@ async function closeSetup() {
     heading.textContent = 'Oppsettet er avsluttet.';
     const text = document.createElement('p');
     text.textContent = 'Du kan lukke fanen. AI-klienten starter MCP-serveren når du bruker den.';
-    byId('main').append(heading, text);
+    const reopen = document.createElement('p');
+    if (onFixedPort) {
+      reopen.append(
+        'Vil du åpne oppsettet igjen senere, kan du gå til ',
+        pagesLink('oppsettssiden'),
+        ' eller kjøre ',
+        codeNode('familiekilder-mcp setup'),
+        ' i terminalen.',
+      );
+    } else {
+      reopen.append(
+        'Vil du åpne oppsettet igjen senere, kjører du ',
+        codeNode('familiekilder-mcp setup'),
+        ' i terminalen.',
+      );
+    }
+    byId('main').append(heading, text, reopen);
     document.querySelectorAll('.sidebar button').forEach((node) => {
       node.disabled = true;
     });

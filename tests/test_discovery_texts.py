@@ -5,12 +5,14 @@ service from being added to REGISTRY without them.
 """
 
 import asyncio
+import html
 import re
 import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 
+from familiekilder import setup_page
 from familiekilder.live_config import Config
 from familiekilder.source_server import build_server
 from familiekilder.sources import REGISTRY
@@ -18,9 +20,15 @@ from familiekilder.sources import REGISTRY
 PROJECT = Path(__file__).resolve().parents[1]
 README = PROJECT / "README.md"
 PROMPTS = PROJECT / "docs/oppskrifter.md"
+GUIDE = PROJECT / "docs/kom-i-gang.md"
+AGENT_SETUP = PROJECT / "docs/agentoppsett.md"
+WIN_LINUX_TRIAL = PROJECT / "docs/prove-pa-windows-og-linux.md"
+ARCHITECTURE = PROJECT / "docs/arkitektur.md"
+SETUP_PAGE_HTML = PROJECT / "pages/oppsett/index.html"
 SERVICE_LINE_MARKER = "<!-- Tjenestelisten er hentet fra sources.REGISTRY. -->"
 # A tool name in backticks, such as `spond_list_chats`.
 TOOL_NAME = re.compile(r"`([a-z]+(?:_[a-z]+)+)`")
+LOCALHOST_PORT = re.compile(r"http://127\.0\.0\.1:(\d+)")
 
 
 def flat(text: str) -> str:
@@ -99,6 +107,62 @@ class DiscoveryTextTests(unittest.TestCase):
         named = set(TOOL_NAME.findall(PROMPTS.read_text(encoding="utf-8")))
         self.assertIn("family_connections", named)
         self.assertEqual(named - read_only_tool_names(), set())
+
+    def test_setup_docs_contain_pages_url(self):
+        for path in (README, GUIDE, AGENT_SETUP):
+            with self.subTest(path=path.relative_to(PROJECT).as_posix()):
+                self.assertIn(setup_page.PAGES_URL, path.read_text(encoding="utf-8"))
+
+    def test_reopen_commands_match_setup_page_agent_message(self):
+        page_html = SETUP_PAGE_HTML.read_text(encoding="utf-8")
+        match = re.search(r'<pre id="agent-message"[^>]*>(.*?)</pre>', page_html, re.DOTALL)
+        self.assertIsNotNone(match, "agent-message block missing from pages/oppsett/index.html")
+        agent_message = html.unescape(match.group(1)).strip()
+        lines = agent_message.splitlines()
+        unix_cmd = next(
+            line.removeprefix("macOS/Linux:").strip()
+            for line in lines
+            if line.startswith("macOS/Linux:")
+        )
+        win_cmd = next(
+            line.removeprefix("Windows (PowerShell):").strip()
+            for line in lines
+            if line.startswith("Windows (PowerShell):")
+        )
+        self.assertIn("setup --no-open", unix_cmd)
+        self.assertIn("setup --no-open", win_cmd)
+
+        for path in (README, PROMPTS, AGENT_SETUP, GUIDE):
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.relative_to(PROJECT).as_posix()):
+                self.assertIn(unix_cmd, text)
+                self.assertIn(win_cmd, text)
+
+        flat_message = flat(agent_message)
+        for path in (README, PROMPTS, AGENT_SETUP):
+            with self.subTest(quoted=path.relative_to(PROJECT).as_posix()):
+                text = path.read_text(encoding="utf-8")
+                # Without backticks Markdown drops the backslash in `\.private`.
+                self.assertIn(f"`{unix_cmd}`", text)
+                self.assertIn(f"`{win_cmd}`", text)
+                prompts = [prompt.replace("`", "") for prompt in quoted_prompts(text)]
+                self.assertIn(flat_message, prompts)
+
+    def test_documented_setup_port_matches_setup_page_constant(self):
+        expected_origin = f"http://127.0.0.1:{setup_page.SETUP_PORT}"
+        for path in (
+            README,
+            GUIDE,
+            AGENT_SETUP,
+            WIN_LINUX_TRIAL,
+            ARCHITECTURE,
+            SETUP_PAGE_HTML,
+        ):
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.relative_to(PROJECT).as_posix()):
+                self.assertIn(expected_origin, text)
+                ports = {int(port) for port in LOCALHOST_PORT.findall(text)}
+                self.assertEqual(ports, {setup_page.SETUP_PORT})
 
 
 if __name__ == "__main__":

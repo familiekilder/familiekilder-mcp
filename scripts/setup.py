@@ -5,8 +5,10 @@
 
 Does what scripts/setup does, without a shell: creates .private/venv with
 the versions pinned in pyproject.toml, installs this folder in it and starts
-`familiekilder-mcp setup`. Standard library only, so any Python 3.11 or newer
-can run it. Run it again after pulling new code.
+`familiekilder-mcp setup` with any arguments passed to this script (such as
+`--local`, `--no-open` or `--port`). By default `setup` uses the fixed local
+port and opens the public setup page in the browser. Standard library only, so
+any Python 3.11 or newer can run it. Run it again after pulling new code.
 """
 
 from __future__ import annotations
@@ -126,7 +128,7 @@ def main() -> int:
         )
         if restricted.returncode != 0:
             fail(".private kunne ikke sikres")
-    print(f"familiekilder-mcp er klart i {VENV}")
+    print(f"familiekilder-mcp er klart i {VENV}. Starter lokalt oppsett …")
     command = [str(python), "-I", "-m", "familiekilder", "setup", *sys.argv[1:]]
     return subprocess.run(command, check=False).returncode
 

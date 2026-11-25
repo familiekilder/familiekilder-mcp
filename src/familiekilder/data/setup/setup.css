@@ -384,6 +384,12 @@ summary {
 .notice p {
   margin: 0 0 12px;
 }
+.notice p:last-child {
+  margin-bottom: 0;
+}
+.notice .actions {
+  margin-top: 10px;
+}
 .notice.error {
   color: var(--danger);
   border-color: #dcaaa6;
@@ -429,11 +435,16 @@ blockquote {
   border-top: 1px solid var(--line);
   padding: 22px 0 30px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   justify-content: space-between;
   font:
     11px ui-monospace,
     monospace;
   color: var(--muted);
+}
+#data-root {
+  overflow-wrap: anywhere;
 }
 dialog {
   max-width: 520px;

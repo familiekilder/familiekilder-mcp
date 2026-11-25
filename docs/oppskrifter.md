@@ -26,7 +26,19 @@ Python 3.11 eller nyere og [Brave](https://brave.com/),
 Edge på Mac er nytt og ikke prøvd med ekte innlogging ennå; se
 [oppsettsveiledningen](kom-i-gang.md#nettleseren).
 
-> Installer familiekilder-mcp fra https://github.com/familiekilder/familiekilder-mcp i ~/familiekilder-mcp. Prosjektet krever Python 3.11+ og Brave, Google Chrome eller Microsoft Edge, på macOS, Windows eller Linux. Kjør scripts/setup.py med Python i bakgrunnen. Veiviseren åpnes automatisk. Innlogging og resten av oppsettet gjør jeg selv der.
+> Installer familiekilder-mcp fra https://github.com/familiekilder/familiekilder-mcp i ~/familiekilder-mcp. Prosjektet krever Python 3.11+ og Brave, Google Chrome eller Microsoft Edge, på macOS, Windows eller Linux. Kjør scripts/setup.py med Python i bakgrunnen. Det åpner den faste oppsettssiden https://familiekilder.github.io/familiekilder-mcp/oppsett/, som kobler til den lokale veiviseren på http://127.0.0.1:28417. Innlogging og resten av oppsettet gjør jeg selv der.
+
+Åpne et eksisterende oppsett på nytt uten å installere på nytt eller oppdatere,
+hvis veiviseren har stoppet. Se
+[Kom tilbake til oppsettet](kom-i-gang.md#kom-tilbake-til-oppsettet).
+
+> Åpne det eksisterende Familiekilder-oppsettet på denne maskinen igjen. Ikke installer på nytt, og ikke oppdater. Kjør i bakgrunnen, og la prosessen stå:
+>
+> macOS/Linux: `~/familiekilder-mcp/.private/venv/bin/python -I -m familiekilder setup --no-open`
+>
+> Windows (PowerShell): `& "$HOME\familiekilder-mcp\.private\venv\Scripts\python.exe" -I -m familiekilder setup --no-open`
+>
+> Brukte vi --root eller --profile sist, sett det samme før setup. Finnes ikke mappen eller miljøet, spør meg. Skriver kommandoen en annen adresse enn http://127.0.0.1:28417, gi meg den adressen. Foreslå gjerne oppdatering, men vent på svar.
 
 Egen server på Fly.io, etter at oppsettet på datamaskinen er ferdig. Se
 [veiledningen for egen server](alltid-pa.md).

@@ -119,10 +119,17 @@ def _ensure_private_directory(path: Path) -> None:
     except FileNotFoundError:
         try:
             path.mkdir(mode=0o700)
-            metadata = path.lstat()
+        except FileExistsError:
+            pass
         except OSError:
             raise FamiliekilderError(
                 "Den private katalogen kunne ikke opprettes sikkert"
+            ) from None
+        try:
+            metadata = path.lstat()
+        except OSError:
+            raise FamiliekilderError(
+                "Den private katalogen kunne ikke kontrolleres sikkert"
             ) from None
     except OSError:
         raise FamiliekilderError(

@@ -3,12 +3,16 @@ from __future__ import annotations
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import shutil
+import socket
+import subprocess
 import tempfile
 import threading
 import unittest
 from unittest.mock import patch
 
 from familiekilder import flyt_auth
+from familiekilder import setup_page
 from familiekilder.browser_bootstrap import BrowserClosedError
 from familiekilder.client_defaults import default_client_config
 from familiekilder.connection_status import auth_module
@@ -744,6 +748,505 @@ class FlytSetupTests(SetupServerCase):
             with self.subTest(headers=headers):
                 self.assertEqual(self.request("/api/flyt-municipalities", headers=headers)[0], 403)
         self.assertEqual(self.transport.calls, [])
+
+
+class StatusAndGuardTests(SetupServerCase):
+    """Matrix for /status, duplicate security headers, cross-site root navigation, and data_root."""
+
+    def raw_request(self, method: str, raw_path: str, headers: list[tuple[str, str]], body: bytes = b""):
+        """Send an HTTP/1.1 request with exact raw path and arbitrary (including duplicate) headers."""
+
+        lines = [f"{method} {raw_path} HTTP/1.1"]
+        for name, value in headers:
+            lines.append(f"{name}: {value}")
+        if body:
+            lines.append(f"Content-Length: {len(body)}")
+        lines.append("Connection: close")
+        payload = ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1") + body
+        with socket.create_connection(("127.0.0.1", self.server.server_port), timeout=5) as sock:
+            sock.sendall(payload)
+            chunks = []
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        raw = b"".join(chunks)
+        head, _, response_body = raw.partition(b"\r\n\r\n")
+        head_lines = head.decode("latin-1").split("\r\n")
+        status = int(head_lines[0].split(" ", 2)[1])
+        response_headers: dict[str, str] = {}
+        for line in head_lines[1:]:
+            key, _, value = line.partition(":")
+            response_headers[key.strip().lower()] = value.strip()
+        return status, response_headers, response_body
+
+    @property
+    def host(self) -> str:
+        return f"127.0.0.1:{self.server.server_port}"
+
+    def test_status_matrix_for_allowed_callers_cors_and_exact_body(self):
+        expected_body = {"app": setup_page.STATUS_APP, "protocol": setup_page.STATUS_PROTOCOL}
+        cases = [
+            ("local_plain", [("Host", self.host)], None),
+            ("local_sfs_none", [("Host", self.host), ("Sec-Fetch-Site", "none")], None),
+            ("local_sfs_same_origin", [("Host", self.host), ("Sec-Fetch-Site", "same-origin")], None),
+            ("local_instance", [("Host", self.host), ("X-Setup-Instance", self.server.instance_id)], None),
+            ("own_origin", [("Host", self.host), ("Origin", self.server.origin)], None),
+            (
+                "pages_origin",
+                [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN), ("Sec-Fetch-Site", "cross-site")],
+                setup_page.PAGES_ORIGIN,
+            ),
+        ]
+        for name, req_headers, expected_acao in cases:
+            with self.subTest(case=name):
+                status, headers, body = self.raw_request("GET", "/status", req_headers)
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body), expected_body)
+                self.assertEqual(set(json.loads(body)), {"app", "protocol"})
+                self.assertEqual(headers.get("vary"), "Origin")
+                self.assertEqual(headers.get("access-control-allow-origin"), expected_acao)
+                self.assertNotIn("access-control-allow-credentials", headers)
+                self.assertEqual(headers.get("cross-origin-resource-policy"), "same-origin")
+                self.assertEqual(headers.get("cache-control"), "no-store")
+                text = body.decode()
+                self.assertNotIn(str(self.root), text)
+                self.assertNotIn(str(self.home), text)
+                self.assertNotIn(self.server.token, text)
+                self.assertNotIn(self.server.instance_id, text)
+
+    def test_status_rejects_bad_headers_duplicates_and_wrong_instance(self):
+        rejected = [
+            ("missing_host", []),
+            ("wrong_host", [("Host", "attacker.invalid")]),
+            ("localhost_host", [("Host", f"localhost:{self.server.server_port}")]),
+            ("dup_host", [("Host", self.host), ("Host", self.host)]),
+            ("evil_origin", [("Host", self.host), ("Origin", "https://attacker.invalid")]),
+            ("null_origin", [("Host", self.host), ("Origin", "null")]),
+            ("http_pages_origin", [("Host", self.host), ("Origin", "http://familiekilder.github.io")]),
+            (
+                "dup_origin",
+                [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN), ("Origin", setup_page.PAGES_ORIGIN)],
+            ),
+            (
+                "dup_origin_mixed",
+                [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN), ("Origin", "https://attacker.invalid")],
+            ),
+            ("no_origin_cross_site", [("Host", self.host), ("Sec-Fetch-Site", "cross-site")]),
+            ("no_origin_same_site", [("Host", self.host), ("Sec-Fetch-Site", "same-site")]),
+            ("no_origin_empty_sfs", [("Host", self.host), ("Sec-Fetch-Site", "")]),
+            (
+                "dup_sfs",
+                [("Host", self.host), ("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")],
+            ),
+            (
+                "instance_with_pages_origin",
+                [
+                    ("Host", self.host),
+                    ("Origin", setup_page.PAGES_ORIGIN),
+                    ("X-Setup-Instance", self.server.instance_id),
+                ],
+            ),
+            (
+                "instance_with_own_origin",
+                [
+                    ("Host", self.host),
+                    ("Origin", self.server.origin),
+                    ("X-Setup-Instance", self.server.instance_id),
+                ],
+            ),
+            (
+                "dup_instance",
+                [
+                    ("Host", self.host),
+                    ("X-Setup-Instance", self.server.instance_id),
+                    ("X-Setup-Instance", self.server.instance_id),
+                ],
+            ),
+        ]
+        for name, req_headers in rejected:
+            with self.subTest(case=name):
+                status, headers, _ = self.raw_request("GET", "/status", req_headers)
+                self.assertEqual(status, 403)
+                self.assertEqual(headers.get("vary"), "Origin")
+                self.assertNotIn("access-control-allow-origin", headers)
+                self.assertNotIn("access-control-allow-credentials", headers)
+
+        status, headers, _ = self.raw_request(
+            "GET", "/status", [("Host", self.host), ("X-Setup-Instance", "wrong-instance-id")]
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(headers.get("vary"), "Origin")
+        self.assertNotIn("access-control-allow-origin", headers)
+
+    def test_non_ascii_tokens_are_rejected_without_a_crash(self):
+        value = "\xe6\xf8\xe5"
+        self.assertEqual(self.request("/status", headers={"X-Setup-Instance": value})[0], 409)
+        self.assertEqual(self.request("/api/state", headers={"X-Setup-Token": value})[0], 403)
+
+    def test_status_returns_503_while_closing(self):
+        self.server.mark_closing()
+        status, headers, _ = self.raw_request(
+            "GET", "/status", [("Host", self.host), ("X-Setup-Instance", self.server.instance_id)]
+        )
+        self.assertEqual(status, 503)
+        self.assertEqual(headers.get("vary"), "Origin")
+        self.assertNotIn("access-control-allow-origin", headers)
+
+        status, headers, _ = self.raw_request(
+            "GET", "/status", [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN)]
+        )
+        self.assertEqual(status, 503)
+        self.assertEqual(headers.get("access-control-allow-origin"), setup_page.PAGES_ORIGIN)
+        self.assertEqual(headers.get("vary"), "Origin")
+
+    def test_status_requires_exact_raw_path_and_get_method(self):
+        for raw_path in ("/status?x=1", "/status/", "//status", "/%73tatus"):
+            with self.subTest(path=raw_path):
+                status, headers, _ = self.raw_request(
+                    "GET", raw_path, [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN)]
+                )
+                self.assertEqual(status, 403)
+                self.assertNotIn("access-control-allow-origin", headers)
+                status, _, _ = self.raw_request("GET", raw_path, [("Host", self.host)])
+                self.assertEqual(status, 404)
+
+        self.assertEqual(self.raw_request("POST", "/status", [("Host", self.host)], b"{}")[0], 403)
+        self.assertEqual(
+            self.raw_request(
+                "POST",
+                "/status",
+                [
+                    ("Host", self.host),
+                    ("Origin", self.server.origin),
+                    ("X-Setup-Token", self.server.token),
+                    ("Content-Type", "application/json"),
+                ],
+                b"{}",
+            )[0],
+            404,
+        )
+        self.assertEqual(
+            self.raw_request(
+                "OPTIONS", "/status", [("Host", self.host), ("Origin", setup_page.PAGES_ORIGIN)]
+            )[0],
+            501,
+        )
+
+    def test_cross_site_navigation_exception_only_allows_exact_root_get_and_sets_coop(self):
+        nav_headers = [
+            ("Host", self.host),
+            ("Sec-Fetch-Site", "cross-site"),
+            ("Sec-Fetch-Mode", "navigate"),
+            ("Sec-Fetch-Dest", "document"),
+        ]
+        status, headers, body = self.raw_request("GET", "/", nav_headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("cross-origin-opener-policy"), "same-origin")
+        self.assertEqual(headers.get("x-frame-options"), "DENY")
+        self.assertIn("frame-ancestors 'none'", headers.get("content-security-policy", ""))
+        self.assertIn(self.server.token.encode(), body)
+
+        # Same-origin GET / also sets Cross-Origin-Opener-Policy.
+        status, headers, _ = self.raw_request("GET", "/", [("Host", self.host)])
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("cross-origin-opener-policy"), "same-origin")
+
+        rejected = [
+            ("root_with_query", "GET", "/?x=1", nav_headers),
+            ("double_slash", "GET", "//", nav_headers),
+            ("setup_js", "GET", "/setup.js", nav_headers),
+            ("setup_css", "GET", "/setup.css", nav_headers),
+            (
+                "api_state_with_token",
+                "GET",
+                "/api/state",
+                [*nav_headers, ("X-Setup-Token", self.server.token)],
+            ),
+            ("post_root", "POST", "/", nav_headers),
+            ("with_origin", "GET", "/", [*nav_headers, ("Origin", setup_page.PAGES_ORIGIN)]),
+            (
+                "wrong_mode",
+                "GET",
+                "/",
+                [
+                    ("Host", self.host),
+                    ("Sec-Fetch-Site", "cross-site"),
+                    ("Sec-Fetch-Mode", "no-cors"),
+                    ("Sec-Fetch-Dest", "document"),
+                ],
+            ),
+            (
+                "wrong_dest",
+                "GET",
+                "/",
+                [
+                    ("Host", self.host),
+                    ("Sec-Fetch-Site", "cross-site"),
+                    ("Sec-Fetch-Mode", "navigate"),
+                    ("Sec-Fetch-Dest", "iframe"),
+                ],
+            ),
+            (
+                "missing_dest",
+                "GET",
+                "/",
+                [("Host", self.host), ("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")],
+            ),
+            (
+                "wrong_host",
+                "GET",
+                "/",
+                [
+                    ("Host", "attacker.invalid"),
+                    ("Sec-Fetch-Site", "cross-site"),
+                    ("Sec-Fetch-Mode", "navigate"),
+                    ("Sec-Fetch-Dest", "document"),
+                ],
+            ),
+            ("dup_sfs", "GET", "/", [*nav_headers, ("Sec-Fetch-Site", "cross-site")]),
+            ("dup_sfm", "GET", "/", [*nav_headers, ("Sec-Fetch-Mode", "navigate")]),
+            ("dup_sfd", "GET", "/", [*nav_headers, ("Sec-Fetch-Dest", "document")]),
+            ("dup_host", "GET", "/", [*nav_headers, ("Host", self.host)]),
+        ]
+        for name, method, raw_path, req_headers in rejected:
+            with self.subTest(case=name):
+                status, _, _ = self.raw_request(method, raw_path, req_headers)
+                self.assertEqual(status, 403)
+
+    def test_api_rejects_duplicate_security_headers(self):
+        cases = [
+            (
+                "dup_token",
+                "GET",
+                "/api/state",
+                [
+                    ("Host", self.host),
+                    ("X-Setup-Token", self.server.token),
+                    ("X-Setup-Token", self.server.token),
+                ],
+                b"",
+            ),
+            (
+                "dup_host",
+                "GET",
+                "/api/state",
+                [("Host", self.host), ("Host", self.host), ("X-Setup-Token", self.server.token)],
+                b"",
+            ),
+            (
+                "dup_origin_post",
+                "POST",
+                "/api/connect",
+                [
+                    ("Host", self.host),
+                    ("Origin", self.server.origin),
+                    ("Origin", self.server.origin),
+                    ("X-Setup-Token", self.server.token),
+                    ("Content-Type", "application/json"),
+                ],
+                b'{"client":"codex"}',
+            ),
+        ]
+        for name, method, path, headers, body in cases:
+            with self.subTest(case=name):
+                self.assertEqual(self.raw_request(method, path, headers, body)[0], 403)
+        self.assertFalse((self.home / ".codex").exists())
+
+    def test_state_reports_data_root_with_tilde_for_home(self):
+        nested = self.home / "Library" / "Application Support" / "familiekilder-mcp"
+        service = SetupService(nested, home=self.home)
+        self.assertEqual(
+            service.state()["data_root"],
+            str(Path("~") / "Library" / "Application Support" / "familiekilder-mcp"),
+        )
+        self.assertFalse(nested.exists())
+        self.assertEqual(SetupService(self.home, home=self.home).state()["data_root"], "~")
+        self.assertEqual(self.service.state()["data_root"], str(self.root))
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required to test setup.js behavior")
+    def test_setup_js_distinguishes_403_from_network_error_and_renders_footer(self):
+        script_path = Path(setup_page.__file__).parent / "data/setup/setup.js"
+        harness = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+function makeNode(tag, id) {
+  const listeners = new Map();
+  const node = {
+    tagName: tag.toUpperCase(),
+    id: id || '',
+    className: '',
+    hidden: false,
+    disabled: false,
+    checked: false,
+    value: '',
+    href: '',
+    content: '',
+    open: false,
+    dataset: {},
+    children: [],
+    options: [],
+    _text: '',
+    classList: { toggle() {} },
+    setAttribute() {},
+    removeAttribute() {},
+    focus() {},
+    showModal() { this.open = true; },
+    close() { this.open = false; },
+    addEventListener(type, fn) { listeners.set(type, fn); },
+    click() { const fn = listeners.get('click'); if (fn) return fn({ target: this, preventDefault() {} }); },
+    replaceChildren(...items) {
+      this.children = items.map((item) => (typeof item === 'string' ? { textContent: item } : item));
+      this._text = '';
+    },
+    append(...items) {
+      for (const item of items) {
+        this.children.push(typeof item === 'string' ? { textContent: item } : item);
+      }
+    },
+    get textContent() {
+      return this.children.length ? this.children.map((c) => c.textContent).join('') : this._text;
+    },
+    set textContent(val) {
+      this.children = [];
+      this._text = String(val);
+    },
+  };
+  return node;
+}
+
+function runScenario(port, responses) {
+  const nodes = new Map();
+  const byId = (id) => {
+    if (!nodes.has(id)) nodes.set(id, makeNode('div', id));
+    return nodes.get(id);
+  };
+  let reloaded = false;
+  let callIndex = 0;
+  const document = {
+    getElementById: byId,
+    querySelector(sel) {
+      if (sel === 'meta[name="setup-token"]') return { content: 'tok' };
+      return makeNode('button');
+    },
+    querySelectorAll() { return []; },
+    createElement(tag) { return makeNode(tag); },
+  };
+  const context = vm.createContext({
+    document,
+    window: {
+      location: { port: String(port), reload() { reloaded = true; } },
+      confirm() { return true; },
+    },
+    fetch(path) {
+      if (path === '/api/doctor') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ text: '', report: {} }) });
+      }
+      if (path === '/api/close') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      }
+      const next = responses[Math.min(callIndex++, responses.length - 1)];
+      if (next.networkError) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve({
+        ok: next.status >= 200 && next.status < 300,
+        status: next.status,
+        json: () => Promise.resolve(next.body),
+      });
+    },
+    setInterval() { return 1; },
+    console,
+  });
+  const source = fs.readFileSync(process.argv[1], 'utf-8');
+  vm.runInContext(source, context);
+  return { context, nodes, getReloaded: () => reloaded };
+}
+
+function findByTag(node, tag) {
+  const out = [];
+  if (node.tagName === tag) out.push(node);
+  for (const child of node.children || []) out.push(...findByTag(child, tag));
+  return out;
+}
+
+(async () => {
+  const okState = {
+    version: '1.0.0',
+    data_root: '~/familiekilder-test',
+    services: [],
+    job: null,
+    tested: false,
+    clients: [],
+    browsers: { installed: [], chosen: 'auto', used: null },
+    dependencies: { browser: false, pdf: false, word: false },
+  };
+
+  // Fixed port: ok -> 403 -> network error -> closeSetup.
+  const fixed = runScenario(28417, [
+    { status: 200, body: okState },
+    { status: 403, body: { error: 'Oppsettsvinduet er utløpt. Last siden på nytt.' } },
+    { networkError: true },
+  ]);
+  await new Promise((r) => setImmediate(r));
+  const footerText = fixed.nodes.get('data-root').textContent;
+  await fixed.context.refresh();
+  const expiredBox = fixed.nodes.get('error');
+  const expiredButtons = findByTag(expiredBox, 'BUTTON');
+  expiredButtons[0].click();
+  const expiredResult = {
+    text: expiredBox.textContent,
+    buttonLabel: expiredButtons[0].textContent,
+    reloaded: fixed.getReloaded(),
+    links: findByTag(expiredBox, 'A').map((a) => a.href),
+  };
+  await fixed.context.refresh();
+  const offlineFixed = {
+    text: fixed.nodes.get('error').textContent,
+    links: findByTag(fixed.nodes.get('error'), 'A').map((a) => a.href),
+  };
+  await fixed.context.closeSetup();
+  const closedFixed = {
+    text: fixed.nodes.get('main').textContent,
+    links: findByTag(fixed.nodes.get('main'), 'A').map((a) => a.href),
+  };
+
+  // Non-fixed port: network error and closeSetup must NOT link to Pages.
+  const custom = runScenario(55555, [{ networkError: true }]);
+  await new Promise((r) => setImmediate(r));
+  const offlineCustom = {
+    text: custom.nodes.get('error').textContent,
+    links: findByTag(custom.nodes.get('error'), 'A').map((a) => a.href),
+  };
+  await custom.context.closeSetup();
+  const closedCustom = {
+    text: custom.nodes.get('main').textContent,
+    links: findByTag(custom.nodes.get('main'), 'A').map((a) => a.href),
+  };
+
+  process.stdout.write(JSON.stringify({
+    footerText, expiredResult, offlineFixed, closedFixed, offlineCustom, closedCustom,
+  }));
+})();
+"""
+        completed = subprocess.run(
+            ["node", "-e", harness, str(script_path)],
+            capture_output=True,
+            encoding="utf-8",
+            check=True,
+            timeout=15,
+        )
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["footerText"], "Datamappe: ~/familiekilder-test")
+        self.assertEqual(result["expiredResult"]["buttonLabel"], "Last siden på nytt")
+        self.assertTrue(result["expiredResult"]["reloaded"])
+        self.assertEqual(result["expiredResult"]["links"], [])
+        self.assertEqual(result["offlineFixed"]["links"], [setup_page.PAGES_URL])
+        self.assertEqual(result["closedFixed"]["links"], [setup_page.PAGES_URL])
+        self.assertEqual(result["offlineCustom"]["links"], [])
+        self.assertIn("familiekilder-mcp setup", result["offlineCustom"]["text"])
+        self.assertEqual(result["closedCustom"]["links"], [])
+        self.assertIn("familiekilder-mcp setup", result["closedCustom"]["text"])
 
 
 if __name__ == "__main__":

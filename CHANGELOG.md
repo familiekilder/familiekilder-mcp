@@ -2,6 +2,36 @@
 
 ## Ikke utgitt
 
+- Ny fast oppsettsside på
+  `https://familiekilder.github.io/familiekilder-mcp/oppsett/` (publisert fra
+  `pages/` med GitHub Pages) og fast lokal port `28417` som standard for
+  `familiekilder-mcp setup`. Siden er statisk, sjekker lokal `GET /status`
+  ved klikk, viser beskjeden som starter oppsettet på nytt uten `pip`, og
+  lenker til den lokale veiviseren. Innlogging og lagring skjer fortsatt bare
+  lokalt.
+  - Nye valg og oppførsel i `setup`: `--local` åpner veiviseren direkte i
+    stedet for oppsettssiden; `--port N` krever valgt port (feil og kode 1 hvis
+    opptatt); `--port 0` velger ledig port og åpner lokalt. Uten `--port`
+    prøves port `28417` (med opptil ti sekunders gjentak på Windows og
+    `SO_EXCLUSIVEADDRUSE`), med automatisk fallback til ledig port og direkte
+    lokal åpning hvis porten er opptatt.
+  - Én kjørende veiviser per datamappe med lås (`setup`) og privat markør
+    (`.private/setup-server.json`): en ny `setup`-kommando gjenbruker en
+    kjørende veiviser av samme versjon og port, og varsler uten å drepe noen
+    prosess ved annen versjon eller annen port.
+  - Statusruten `GET /status` svarer bare
+    `{"app": "familiekilder-mcp", "protocol": 1}` med eksakt `Origin`-sjekk, og
+    `GET /` har et avgrenset navigasjonsunntak for kryssnettsteds-lenker (med
+    `Cross-Origin-Opener-Policy: same-origin`), mens alle `/api/*`-kall
+    beholder token- og opprinnelseskravene.
+  - Veiviseren viser nå datamappen i bunnteksten, skiller utløpt token (403 med
+    «Last siden på nytt») fra stoppet prosess (lenke til oppsettssiden på fast
+    port), og sluttsiden sier hvordan oppsettet åpnes igjen.
+  - Prøvd uten synlig vindu, med oppdiktet profil: Brave 156 og Chrome 157 på Mac,
+    Brave 158 på Ubuntu, og Edge 158 og Chrome 158 på Windows. Ikke prøvd ennå: den
+    synlige tillatelsesdialogen, Safari, Firefox og Edge på Mac, og bruk med ekte
+    innlogging på Windows og Linux. Se
+    [Kom tilbake til oppsettet](docs/kom-i-gang.md#kom-tilbake-til-oppsettet).
 - Gmail er fjernet. Serveren brukes med Claude eller ChatGPT, og begge har
   allerede sin egen Gmail-tilkobling. Da trenger ikke serveren en til. Slå på
   Gmail i assistenten i stedet, så kan den bruke e-posten sammen med

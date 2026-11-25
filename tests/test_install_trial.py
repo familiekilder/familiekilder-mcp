@@ -30,7 +30,7 @@ class GuideCommandTests(unittest.TestCase):
     def test_powershell_block_has_cd_setup_and_path_lines(self):
         commands = install_trial.guide_commands(GUIDE, "powershell")
         self.assertEqual(commands[0], "cd C:\\sti\\til\\familiekilder-mcp")
-        self.assertIn("py scripts\\setup.py --no-open", commands)
+        self.assertIn("py scripts\\setup.py --no-open --port 0", commands)
         self.assertTrue(commands[-1].startswith("$env:Path = "))
 
     def test_sh_block_is_followed_by_the_setup_command(self):
@@ -38,7 +38,7 @@ class GuideCommandTests(unittest.TestCase):
         self.assertEqual(commands[0], "cd /sti/til/familiekilder-mcp")
         self.assertIn("scripts/bootstrap-local-venv", commands)
         self.assertTrue(any(line.startswith("export PATH=") for line in commands))
-        self.assertEqual(commands[-1], "familiekilder-mcp setup --no-open")
+        self.assertEqual(commands[-1], "familiekilder-mcp setup --no-open --port 0")
 
     def test_a_changed_guide_stops_the_trial(self):
         changed = GUIDE.replace("cd /sti/til/familiekilder-mcp", "cd ~/familiekilder-mcp")

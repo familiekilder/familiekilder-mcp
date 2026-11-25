@@ -18,7 +18,7 @@ _LOCAL = threading.local()
 
 # Shared locks besides the one per source. A lock lives in `<name>.lock`, so
 # a name must never change once it has been used.
-_NAMES = {'changes', 'read-cache'}
+_NAMES = {'changes', 'read-cache', 'setup'}
 
 
 def register_lock_names(*names: str) -> None:
@@ -36,14 +36,19 @@ def _acquire(handle, lock_path, source, *, wait, timeout):
     if os.name == "nt":
         import msvcrt
 
-        if lock_path.stat().st_size == 0:
-            handle.write(b"\0")
-            handle.flush()
-        handle.seek(0)
+        fd = handle.fileno()
+        if os.fstat(fd).st_size == 0:
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                os.write(fd, b"\0")
+            except OSError:
+                # Another process may have initialized and already locked byte 0.
+                pass
 
         def attempt():
+            os.lseek(fd, 0, os.SEEK_SET)
             mode = msvcrt.LK_LOCK if wait and deadline is None else msvcrt.LK_NBLCK
-            msvcrt.locking(handle.fileno(), mode, 1)
+            msvcrt.locking(fd, mode, 1)
 
         busy_errors = (OSError,)
     else:
@@ -191,7 +196,7 @@ def private_named_lock(root, name, *, wait=False, timeout=None):
             if os.name == "nt":
                 import msvcrt
 
-                handle.seek(0)
+                os.lseek(handle.fileno(), 0, os.SEEK_SET)
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl

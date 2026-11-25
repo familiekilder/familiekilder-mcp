@@ -673,14 +673,16 @@ class StartTests(RenewalCase):
 
         def server(root, **_):
             seen.append(self.stored("spond")["app_version"])
-            return contextlib.nullcontext(MagicMock(origin="http://127.0.0.1:1"))
+            return contextlib.nullcontext(MagicMock(origin="http://127.0.0.1:1", server_port=1))
 
         with (
             shipping(new_defaults()),
             patch("familiekilder.setup_web.SetupServer", side_effect=server),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            self.assertEqual(source_cli.main(["--root", str(self.root), "setup", "--no-open"]), 0)
+            self.assertEqual(
+                source_cli.main(["--root", str(self.root), "setup", "--no-open", "--port", "0"]), 0
+            )
         self.assertEqual(seen, ["fictional-spond-2.0"])
 
     def test_wizard_starts_when_renewal_fails(self):
@@ -694,12 +696,14 @@ class StartTests(RenewalCase):
             patch.object(client_defaults, "_present", return_value=True),
             patch(
                 "familiekilder.setup_web.SetupServer",
-                return_value=contextlib.nullcontext(MagicMock(origin="http://127.0.0.1:1")),
+                return_value=contextlib.nullcontext(MagicMock(origin="http://127.0.0.1:1", server_port=1)),
             ) as server,
             contextlib.redirect_stdout(io.StringIO()),
             self.assertLogs("familiekilder.client_defaults", "WARNING"),
         ):
-            self.assertEqual(source_cli.main(["--root", str(self.root), "setup", "--no-open"]), 0)
+            self.assertEqual(
+                source_cli.main(["--root", str(self.root), "setup", "--no-open", "--port", "0"]), 0
+            )
         renew.assert_called_once()
         server.assert_called_once()
 

@@ -462,7 +462,9 @@ class CommandTests(DoctorCase):
                     patch.object(SetupServer, "serve_forever", read_instead_of_serve),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
-                    self.assertEqual(source_cli.main([*options, "setup", "--no-open"]), 0)
+                    self.assertEqual(
+                        source_cli.main([*options, "setup", "--no-open", "--port", "0"]), 0
+                    )
                     for error, wizard in zip((None, failure), wizard_reports, strict=True):
                         with contextlib.ExitStack() as stack:
                             if error:

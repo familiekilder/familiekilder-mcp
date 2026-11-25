@@ -68,6 +68,7 @@ PLACEHOLDERS = {
 }
 SETUP_COMMAND = "familiekilder-mcp setup"
 NO_OPEN = "--no-open"
+SETUP_ARGS = f"{NO_OPEN} --port 0"
 
 # Run in the same shell after the guide's commands, so the PATH line applies.
 POST_SETUP_COMMANDS = [
@@ -159,12 +160,12 @@ def guide_commands(markdown: str, shell: str) -> list[str]:
         setup = [index for index, line in enumerate(commands) if "scripts\\setup.py" in line]
         if len(setup) != 1:
             raise DocsChanged("powershell-blokken har ikke nøyaktig én linje med scripts\\setup.py")
-        commands[setup[0]] += f" {NO_OPEN}"
+        commands[setup[0]] += f" {SETUP_ARGS}"
     else:
         browser_setup = section(markdown, SETUP_SECTION)
         if f"`{SETUP_COMMAND}`" not in browser_setup:
             raise DocsChanged(f"«{SETUP_SECTION}» nevner ikke `{SETUP_COMMAND}`")
-        commands.append(f"{SETUP_COMMAND} {NO_OPEN}")
+        commands.append(f"{SETUP_COMMAND} {SETUP_ARGS}")
     return commands
 
 

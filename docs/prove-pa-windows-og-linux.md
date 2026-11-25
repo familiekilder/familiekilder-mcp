@@ -63,9 +63,14 @@ Dette er de samme kommandoene som i [Kom i gang](kom-i-gang.md#last-ned-og-insta
 1. **Installasjonen** skriver mye fra `pip` og slutter med
    `familiekilder-mcp er klart i …`. Første gang tar det et halvt til to
    minutter.
-2. **Veiviseren** skriver `Åpne lokalt oppsett: http://127.0.0.1:…` og åpner
-   seg i den vanlige nettleseren din. Åpnes den ikke, kopierer du adressen inn
-   selv.
+2. **Veiviseren** skriver `Åpne lokalt oppsett: http://127.0.0.1:28417` og
+   `Fast oppsettsside: https://familiekilder.github.io/familiekilder-mcp/oppsett/`,
+   og åpner den faste oppsettssiden i den vanlige nettleseren din. Der klikker
+   du **Sjekk tilkoblingen** (og godtar eventuelt forespørselen om lokal
+   tilgang i nettleseren) og deretter **Fortsett oppsettet**, eller bruker
+   **Åpne veiviseren direkte**. Er port `28417` opptatt, velger veiviseren en
+   ledig port og åpner den lokale adressen direkte i stedet. Åpnes ikke
+   nettleseren, kopierer du adressen fra terminalen selv.
 3. **Forhåndssjekken.** Åpne «Hva trenger jeg på maskinen?» i veiviseren og se
    på «Forhåndssjekk», eller kjør den fra en ny terminal; se
    [under](#forhåndssjekken). Første linje skal være `Resultat: OK`.
@@ -167,8 +172,10 @@ oppdiktede data og lokale sider og kontakter ingen tjeneste.
 | Innloggingsløpet | Med ekte nettleser og en oppdiktet innloggingsside på 127.0.0.1: tilbakekallet fanges, koden byttes hos en lokal, oppdiktet tokentjeneste, økten lagres privat og leses første gang. Spond-økter leses fra en side i nettleseren (`scripts/login_trial.py`). Hvor prøven skiller seg fra en ekte innlogging, står øverst i skriptet. |
 | Nettlesere installert per bruker (Windows) | Brave og Chrome under `AppData` hoppes over, Edge brukes, og forhåndssjekken forklarer hvorfor. |
 | Passordlagring | Et oppdiktet passord lagres, leses og slettes i Legitimasjonsbehandling (Windows) og GNOME Keyring (Linux). Uten nøkkelring sier programmet fra, og innloggingen virker uten lagret passord (`scripts/password_trial.py`). |
+| Den faste oppsettssiden | Prøvd uten synlig vindu, med oppdiktet profil: Brave 156 og Chrome 157 på Mac, Brave 158 på Ubuntu, og Edge 158 og Chrome 158 på Windows. Ikke prøvd ennå: den synlige tillatelsesdialogen, Safari, Firefox og Edge på Mac, og bruk med ekte innlogging på Windows og Linux. |
 | Ekte innlogging hos tjenestene | Bare på Mac med Brave. |
 
-Det som bare et menneske med ekte konto kan prøve: innloggingssidene hos
-tjenestene, BankID, at økten virker mot tjenestens ekte svar, og at
-AI-appen bruker verktøyene.
+Det som bare et menneske med ekte konto kan prøve: den synlige
+tillatelsesdialogen på oppsettssiden (og Safari, Firefox og Edge på ekte
+maskiner), innloggingssidene hos tjenestene, BankID, at økten virker mot
+tjenestens ekte svar, og at AI-appen bruker verktøyene.

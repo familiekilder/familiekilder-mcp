@@ -22,6 +22,12 @@ Edge; se [nettleseren](#nettleseren). Lesing av PDF krever Poppler
   innloggingsløpet mot oppdiktede, lokale sider. Lagrede passord er prøvd mot
   Legitimasjonsbehandling på Windows og GNOME Keyring på Linux. Ingen prøve
   logger inn hos en ekte tjeneste.
+- **Fast oppsettsside:** Den faste oppsettssiden
+  (`https://familiekilder.github.io/familiekilder-mcp/oppsett/`) er prøvd uten
+  synlig vindu, med oppdiktet profil: Brave 156 og Chrome 157 på Mac, Brave 158
+  på Ubuntu, og Edge 158 og Chrome 158 på Windows. Ikke prøvd ennå: den synlige
+  tillatelsesdialogen, Safari, Firefox, Edge på Mac, og bruk med ekte innlogging
+  på Windows og Linux.
 
 Vil du prøve på Windows eller Linux, les [Prøve på Windows eller
 Linux](prove-pa-windows-og-linux.md). Der står hva du trenger, hva du skal se
@@ -161,8 +167,17 @@ konkret feil som blokkerer innlogging.
 Kjør `familiekilder-mcp setup`, eller fra prosjektmappen
 `python3 scripts/setup.py` (på Windows `py scripts\setup.py`). Skriptet
 installerer pakken først. `scripts/setup` virker også på macOS og Linux.
-Veiviseren åpnes på `127.0.0.1` med en ledig port og er bare tilgjengelig på
-denne maskinen.
+
+Som standard starter veiviseren lokalt på `http://127.0.0.1:28417` (bare
+tilgjengelig på denne maskinen) og åpner den faste oppsettssiden
+`https://familiekilder.github.io/familiekilder-mcp/oppsett/` i
+standardnettleseren din. Siden er statisk og hentes fra GitHub Pages (GitHub
+ser da IP-adressen din, men siden sender oss ingenting). Når du klikker
+**Sjekk tilkoblingen**, spør siden bare `http://127.0.0.1:28417/status` på din
+egen maskin. Nettleseren kan spørre om tilgang til apper på enheten; velg
+**Tillat**, og klikk **Fortsett oppsettet** for å åpne veiviseren. Innlogging
+og lagring skjer bare i den lokale veiviseren. Bunnteksten i veiviseren viser
+hvilken datamappe som er åpen (med `~` for hjemmemappen).
 
 1. Velg «Logg inn» på tjenestene du bruker. Vigilo, Skolemelding, Spond og
    IST Home har innebygd oppsett, så du trenger ingen fil. Hoopit kobles til
@@ -193,9 +208,20 @@ denne maskinen.
 4. Test MCP-forbindelsen og start AI-klienten på nytt. Testen henter ingen
    beskjeder; den kontrollerer den lokale serveren og leseverktøyene.
 
-Avslutt med «Avslutt oppsett» eller Ctrl+C. Innloggingen og konfigurasjonen
-beholdes. AI-klienten starter MCP-serveren ved senere bruk. `setup --no-open`
-viser adressen uten å åpne nettleseren; `--port NUMMER` velger en fast port.
+**Avslutt oppsett** (eller Ctrl+C i terminalen) lukker bare selve
+oppsettsveiviseren. Lagrede innlogginger og klientkoblinger beholdes, og
+AI-appen starter MCP-serveren selv når du bruker den.
+
+Valg til `familiekilder-mcp setup` (kan også gis til `scripts/setup.py` og
+`scripts/setup`):
+
+- `--local`: åpner den lokale veiviseren direkte (`http://127.0.0.1:28417`) i
+  stedet for den faste oppsettssiden.
+- `--no-open`: skriver adressene i terminalen uten å åpne nettleseren.
+- `--port N`: binder til valgt lokal port `N` (1–65535). Er porten opptatt,
+  stopper kommandoen med feil og kode 1. På en annen port enn `28417` åpnes den
+  lokale veiviseren direkte, fordi oppsettssiden bare spør port `28417`.
+- `--port 0`: velger en ledig port og åpner den lokale veiviseren direkte.
 
 Claude Desktop-konfigurasjonen lagres i `claude_desktop_config.json` i
 `~/Library/Application Support/Claude/` på macOS, `%APPDATA%\Claude\` på
@@ -205,6 +231,99 @@ Codex-konfigurasjonsmappe, må du legge til serveren der manuelt.
 Konfigurasjoner som ikke
 kan leses sikkert, overskrives ikke. En lokal konfigurasjon betyr ikke at
 vanlig ChatGPT-nettchat får tilgang til serveren.
+
+## Kom tilbake til oppsettet
+
+Oppsettssiden `https://familiekilder.github.io/familiekilder-mcp/oppsett/` er
+fast og virker også etter at den lokale veiviseren er lukket. Hvis veiviseren
+har stoppet, eller du vil legge til flere tjenester senere, starter du den
+igjen fra det eksisterende miljøet uten å kjøre `scripts/setup.py` eller `pip`
+på nytt.
+
+### Åpne på nytt uten `pip`
+
+Har du `familiekilder-mcp` i `PATH`, kjører du `familiekilder-mcp setup` (eller
+`familiekilder-mcp setup --no-open` hvis oppsettssiden allerede er åpen i
+nettleseren). Ellers kjører du Python i det eksisterende miljøet direkte (bytt
+ut mappen hvis du la koden et annet sted enn `~/familiekilder-mcp`):
+
+**macOS og Linux:**
+
+```sh
+~/familiekilder-mcp/.private/venv/bin/python -I -m familiekilder setup --no-open
+```
+
+**Windows (PowerShell):**
+
+```powershell
+& "$HOME\familiekilder-mcp\.private\venv\Scripts\python.exe" -I -m familiekilder setup --no-open
+```
+
+Brukte du `--root MAPPE` eller `--profile NAVN` sist, må flagget stå **før**
+`setup`:
+
+```sh
+~/familiekilder-mcp/.private/venv/bin/python -I -m familiekilder --profile nabo setup --no-open
+```
+
+Fjern `--no-open` hvis du vil at kommandoen også skal åpne nettleseren. Klikk
+deretter **Prøv igjen** i den åpne oppsettssidefanen. Har du en gammel
+veiviserfane på port `28417`, merker den at en ny prosess har overtatt porten
+(utløpt token) og viser knappen **Last siden på nytt**.
+
+Kjører veiviseren allerede for samme datamappe og versjon, gjenbruker en ny
+`setup`-kommando den kjørende veiviseren i stedet for å starte en ny prosess
+(den skriver adressene og avslutter med kode 0). Er pakken oppdatert mens
+veiviseren kjører, eller ber du om en annen `--port`, sier den fra og ber deg
+avslutte den kjørende veiviseren først.
+
+### Hva som overlever, og hva som må gjentas
+
+- **Overlever:** Lagrede innlogginger og tokens, aktiverte tjenester, valgt
+  nettleser for innlogging, valgt Flyt-kommune og klientkoblingene for Claude
+  Desktop og Codex. Alt dette ligger på disk og vises med en gang når du åpner
+  veiviseren igjen.
+- **Må gjentas:** En innlogging som ble avbrutt før den ble lagret, må startes
+  på nytt. Hvilket steg (1–3) du sto på i veiviseren og resultatet av **Test
+  forbindelsen** huskes ikke mellom kjøringer; kjør testen på nytt i steg 3
+  hvis du vil kontrollere forbindelsen igjen.
+
+### Vanlige situasjoner
+
+- **Avslått tillatelse i nettleseren.** Hvis du avviste forespørselen om lokal
+  tilgang, melder oppsettssiden at lokal tilgang er blokkert for siden. Du kan
+  likevel bruke **Åpne veiviseren direkte** (`http://127.0.0.1:28417/`) — en
+  vanlig lenke trenger ikke den tillatelsen. Vil du at tilkoblingssjekken skal
+  virke igjen, åpner du nettleserens nettstedsinnstillinger for oppsettssiden
+  (vanligvis fra ikonet i adressefeltet eller under nettstedstillatelser i
+  innstillingene), tillater tilgang til lokale apper/enheter, laster siden på
+  nytt og klikker **Prøv igjen**.
+- **Safari.** Ikke prøvd ennå, men ifølge en åpen feilsak hos WebKit (171934)
+  blokkerer Safari tilkoblingssjekken fra en HTTPS-side til `http://127.0.0.1` som
+  blandet innhold. Bruk lenken **Åpne veiviseren direkte** på oppsettssiden,
+  gå rett til `http://127.0.0.1:28417/`, eller start med
+  `familiekilder-mcp setup --local`.
+- **Opptatt port.** Hvis et annet program allerede bruker port `28417` når du
+  kjører `setup` uten `--port`, velger veiviseren automatisk en ledig port i
+  stedet (på Windows prøver den port `28417` på nytt i opptil ti sekunder først
+  for å tåle rask gjenåpning). Da åpner den den lokale adressen direkte og
+  skriver i terminalen at oppsettssiden ikke når denne veiviseren, sammen med
+  adressen du skal bruke. Oppgir du `--port N` og porten er opptatt, stopper
+  kommandoen med feil og kode 1.
+- **To profiler samtidig.** Bare én veiviser kan ha port `28417` om gangen.
+  Starter du en ny profil samtidig (med `--profile` eller `--root`), får den
+  andre profilen en ledig port og sin egen lokale adresse i terminalen. Bruk
+  den adressen, og se på `Datamappe:` i bunnteksten i veiviseren for å være
+  sikker på hvilken profil du har åpen.
+- **Eldre installasjon uten fast port.** En eldre installasjon uten støtte for
+  den faste porten velger alltid en tilfeldig port og har ingen statusrute på
+  port `28417`. Bruk adressen som skrives i terminalen, eller oppdater
+  installasjonen hvis du vil bruke den faste oppsettssiden.
+- **GitHub Pages utilgjengelig eller uten nett.** Veiviseren kjører lokalt og
+  avhenger ikke av GitHub Pages. Får du ikke opp oppsettssiden, åpner du
+  `http://127.0.0.1:28417/` direkte i nettleseren eller starter med
+  `familiekilder-mcp setup --local`. (Selve innloggingen mot tjenestene krever
+  fortsatt nettforbindelse.)
 
 ## Oppsett fra terminalen
 

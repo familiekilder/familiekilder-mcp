@@ -124,13 +124,30 @@ class SetupService:
                 "message": self.job.message,
             }
             return {
-                "version": __version__, "services": rows, "job": job, "tested": self.tested,
+                "version": __version__, "data_root": self._display_root(),
+                "services": rows, "job": job, "tested": self.tested,
                 "clients": [client_state(client, self.root, self.home) for client in ("claude", "codex")],
                 "browsers": self._browsers(),
                 "dependencies": {"browser": bool(installed_browsers()),
                                  "pdf": bool(shutil.which("pdftotext") and shutil.which("pdftoppm")),
                                  "word": bool(shutil.which("soffice") or Path("/Applications/LibreOffice.app").exists())},
             }
+
+    def _display_root(self) -> str:
+        """The data folder for the local footer, with ~ for the home folder."""
+
+        root_path = Path(self.root)
+        home_path = Path(self.home)
+        for candidate, base in (
+            (root_path, home_path),
+            (root_path.resolve(), home_path.resolve()),
+        ):
+            try:
+                relative = candidate.relative_to(base)
+            except ValueError:
+                continue
+            return "~" if relative == Path(".") else str(Path("~") / relative)
+        return str(root_path)
 
     def _browsers(self) -> dict:
         """The browsers found on this machine and the one logins open in."""

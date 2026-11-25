@@ -31,9 +31,14 @@ eller send en pull request hvis du vil
 
 ## Serveren er din
 
-Du kjører serveren selv: på din egen datamaskin, eller på din egen konto hos
-[Fly.io](https://fly.io/). Ingen data går gjennom eller lagres hos oss som
-lager programmet. Vi har ingen server, og programmet sender oss ingenting.
+Du kjører MCP-serveren selv: på din egen datamaskin, eller på din egen konto hos
+[Fly.io](https://fly.io/). Ingen data fra tjenestene eller innloggingene dine
+går gjennom eller lagres hos oss. Vi driver ingen MCP-server eller backend, og
+programmet sender oss ingenting. Den faste oppsettssiden
+(`https://familiekilder.github.io/familiekilder-mcp/oppsett/`) er en statisk
+side som hentes fra GitHub Pages. GitHub ser da IP-adressen din, slik de gjør
+når du besøker reposiden, mens siden bare snakker med `127.0.0.1` på din egen
+maskin og ikke sender oss noe.
 
 | | På datamaskinen | Din server på Fly.io |
 | --- | :---: | :---: |
@@ -77,6 +82,10 @@ tjenestene.
   lokale sider, men ikke med ekte innlogging ennå. Vil du prøve, les
   [Prøve på Windows eller Linux](docs/prove-pa-windows-og-linux.md), og si
   gjerne fra under **Issues**, også når det virker.
+- **Fast oppsettsside:** Prøvd uten synlig vindu, med oppdiktet profil: Brave 156
+  og Chrome 157 på Mac, Brave 158 på Ubuntu, og Edge 158 og Chrome 158 på
+  Windows. Ikke prøvd ennå: den synlige tillatelsesdialogen, Safari, Firefox,
+  Edge på Mac, og bruk med ekte innlogging på Windows og Linux.
 - **Windows:** Installer nettleseren for alle brukere på maskinen. En
   nettleser som bare er installert for deg, blir avvist. Edge følger med
   Windows og brukes da i stedet.
@@ -87,9 +96,27 @@ Detaljer står i [oppsettsveiledningen](docs/kom-i-gang.md#nettleseren).
 
 Få kodeagenten til å installere for deg. Åpne Codex i ChatGPT-appen eller Claude og lim inn prompten under.
 
-> Installer familiekilder-mcp fra https://github.com/familiekilder/familiekilder-mcp i ~/familiekilder-mcp. Prosjektet krever Python 3.11+ og Brave, Google Chrome eller Microsoft Edge, på macOS, Windows eller Linux. Kjør scripts/setup.py med Python i bakgrunnen. Veiviseren åpnes automatisk. Innlogging og resten av oppsettet gjør jeg selv der.
+> Installer familiekilder-mcp fra https://github.com/familiekilder/familiekilder-mcp i ~/familiekilder-mcp. Prosjektet krever Python 3.11+ og Brave, Google Chrome eller Microsoft Edge, på macOS, Windows eller Linux. Kjør scripts/setup.py med Python i bakgrunnen. Det åpner den faste oppsettssiden https://familiekilder.github.io/familiekilder-mcp/oppsett/, som kobler til den lokale veiviseren på http://127.0.0.1:28417. Innlogging og resten av oppsettet gjør jeg selv der.
 
 Eller installer selv ved å følge [oppsettsveiledningen](docs/kom-i-gang.md).
+
+### Kom tilbake til oppsettet
+
+Gå tilbake til `https://familiekilder.github.io/familiekilder-mcp/oppsett/` når
+du vil fortsette eller endre oppsettet senere. Har den lokale veiviseren
+stoppet, kan du sende beskjeden under til kodeagenten og deretter trykke **Prøv
+igjen** på oppsettssiden:
+
+> Åpne det eksisterende Familiekilder-oppsettet på denne maskinen igjen. Ikke installer på nytt, og ikke oppdater. Kjør i bakgrunnen, og la prosessen stå:
+>
+> macOS/Linux: `~/familiekilder-mcp/.private/venv/bin/python -I -m familiekilder setup --no-open`
+>
+> Windows (PowerShell): `& "$HOME\familiekilder-mcp\.private\venv\Scripts\python.exe" -I -m familiekilder setup --no-open`
+>
+> Brukte vi --root eller --profile sist, sett det samme før setup. Finnes ikke mappen eller miljøet, spør meg. Skriver kommandoen en annen adresse enn http://127.0.0.1:28417, gi meg den adressen. Foreslå gjerne oppdatering, men vent på svar.
+
+Flere detaljer om gjenåpning, nettlesertillatelse, Safari og opptatt port står
+i [oppsettsveiledningen](docs/kom-i-gang.md#kom-tilbake-til-oppsettet).
 
 Bruk serveren fra [Claude Desktop](https://claude.com/download) eller
 [ChatGPT-appen for Mac](https://chatgpt.com/download/) på samme maskin. I
