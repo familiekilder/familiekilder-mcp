@@ -81,7 +81,8 @@ def project_of(path):
 
 def run_file(path, python, run, timeout):
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix='fi-') as temporary, tempfile.TemporaryFile() as output:
+    with tempfile.TemporaryDirectory(
+            prefix='fi-', ignore_cleanup_errors=os.name == 'nt') as temporary, tempfile.TemporaryFile() as output:
         environment = {**os.environ, 'TMPDIR': temporary}
         process = run.start([python, '-m', 'unittest', str(Path(path).resolve())], stdout=output,
                             stderr=subprocess.STDOUT, env=environment, cwd=project_of(path))
@@ -162,8 +163,10 @@ def main(arguments=None):
         return 130
     finally:
         if not completed:
-            for stop_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-                signal.signal(stop_signal, signal.SIG_IGN)
+            # Windows has no SIGHUP.
+            for name in ('SIGINT', 'SIGTERM', 'SIGHUP'):
+                if hasattr(signal, name):
+                    signal.signal(getattr(signal, name), signal.SIG_IGN)
             run.stop()
         pool.shutdown(wait=True, cancel_futures=True)
     print()

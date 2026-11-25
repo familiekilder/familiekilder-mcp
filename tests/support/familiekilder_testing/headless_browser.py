@@ -587,7 +587,21 @@ class HeadlessBrowser:
         process, self._process = self._process, None
         self._page = None
         if process is not None:
-            if process.poll() is None:
+            if process.poll() is None and os.name == "nt":
+                # Edge's child processes outlive a polite close and keep profile files open,
+                # so end the whole tree while its root still exists.
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            elif process.poll() is None:
                 try:
                     self._cdp.call("Browser.close", timeout=3.0)
                 except Exception:
