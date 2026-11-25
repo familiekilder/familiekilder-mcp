@@ -187,7 +187,7 @@ strammet inn rundt dette:
   ikke-blokkerende prosesslås (`setup` i `private_lock.py`) i dataroten. Når
   serveren har bundet, skriver den `.private/setup-server.json` atomisk med
   port, tilfeldig kjøre-ID (`instance`), protokoll og en SHA-256-hash over
-  pakkens `.py`- og `data/setup`-filer. Er låsen opptatt, leser en ny
+  pakkens `.py`- og `data`-filer. Er låsen opptatt, leser en ny
   `setup`-kommando markøren og spør `/status` med `X-Setup-Instance` i opptil
   15 sekunder (hodet avvises med 403 hvis `Origin` er til stede, gir 409 ved
   feil kjøre-ID og 503 når veiviseren lukker). Svarer samme versjon og port,

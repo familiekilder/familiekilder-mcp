@@ -377,7 +377,7 @@ class ServeLifecycleAndOrderTests(SetupReopenCase):
             return setup_web.serve(root, **kwargs)
 
     def test_changed_code_fingerprint_fails_reuse_with_explanation_and_keeps_running(self) -> None:
-        # Also verify _code_fingerprint is deterministic and detects edits to .py and data/setup.
+        # Also verify _code_fingerprint is deterministic and detects edits to the data files.
         fake_pkg = self.base / "pkg"
         (fake_pkg / "data" / "setup").mkdir(parents=True)
         (fake_pkg / "mod.py").write_text("x = 1\n", encoding="utf-8")
@@ -385,12 +385,16 @@ class ServeLifecycleAndOrderTests(SetupReopenCase):
         fp1 = setup_web._code_fingerprint(fake_pkg)
         self.assertEqual(fp1, setup_web._code_fingerprint(fake_pkg))
         (fake_pkg / "data" / "setup" / "setup.js").write_text("const a = 2;\n", encoding="utf-8")
-        self.assertNotEqual(fp1, setup_web._code_fingerprint(fake_pkg))
+        fp2 = setup_web._code_fingerprint(fake_pkg)
+        self.assertNotEqual(fp1, fp2)
+        (fake_pkg / "data" / "client-defaults.json").write_text("{}\n", encoding="utf-8")
+        self.assertNotEqual(fp2, setup_web._code_fingerprint(fake_pkg))
 
         stdout1 = io.StringIO()
+        # serve() swallows errors from the opener, so count its calls afterwards.
         with (
             patch.object(setup_page, "SETUP_PORT", self.fixed_port),
-            patch("webbrowser.open", side_effect=AssertionError("must not open on mismatch")),
+            patch("webbrowser.open") as browser_open,
         ):
             thread = threading.Thread(
                 target=lambda: self._run_into(stdout1, self.root, open_browser=False),
@@ -412,6 +416,7 @@ class ServeLifecycleAndOrderTests(SetupReopenCase):
                 ):
                     code = setup_web.serve(self.root, port=None, open_browser=True)
                 self.assertEqual(code, 1)
+                browser_open.assert_not_called()
                 self.assertIn(f"http://127.0.0.1:{self.fixed_port}", stderr.getvalue())
                 self.assertIn("Avslutt", stderr.getvalue())
                 # Original wizard is still alive.

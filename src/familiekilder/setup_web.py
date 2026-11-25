@@ -83,16 +83,17 @@ def marker_path(root: Path) -> Path:
 
 
 def _code_fingerprint(package_root: Path | None = None) -> str:
-    """Cheap, deterministic SHA-256 over the installed package's .py and data/setup files."""
+    """Cheap, deterministic SHA-256 over the installed package's .py and data files."""
 
     base = Path(__file__).resolve().parent if package_root is None else Path(package_root).resolve()
     files: dict[str, Path] = {}
     for path in base.rglob("*.py"):
         if "__pycache__" not in path.parts and path.is_file():
             files[path.relative_to(base).as_posix()] = path
-    setup_assets = base / "data" / "setup"
-    if setup_assets.is_dir():
-        for path in setup_assets.rglob("*"):
+    # Also client-defaults.json, which a running wizard has cached.
+    data = base / "data"
+    if data.is_dir():
+        for path in data.rglob("*"):
             if path.is_file():
                 files[path.relative_to(base).as_posix()] = path
     digest = hashlib.sha256()
