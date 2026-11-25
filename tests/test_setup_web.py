@@ -1234,7 +1234,7 @@ function findByTag(node, tag) {
             capture_output=True,
             encoding="utf-8",
             check=True,
-            timeout=15,
+            timeout=60,
         )
         result = json.loads(completed.stdout)
         self.assertEqual(result["footerText"], "Datamappe: ~/familiekilder-test")

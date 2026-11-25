@@ -7,6 +7,7 @@ import os
 import re
 import stat
 import tempfile
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -17,6 +18,27 @@ from .core import FamiliekilderError, project_paths
 MAX_PRIVATE_JSON_BYTES = 1024 * 1024
 _SAFE_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}\Z")
 _T = TypeVar("_T")
+# Windows refuses to replace a file another process has open, also for reading.
+# Private files are read in milliseconds, so a short wait is enough.
+WINDOWS_REPLACE_SECONDS = 2.0
+_WINDOWS_FILE_IN_USE = {5, 32}
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _replace(source: Path, target: Path) -> None:
+    deadline = time.monotonic() + WINDOWS_REPLACE_SECONDS
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as error:
+            in_use = getattr(error, "winerror", None) in _WINDOWS_FILE_IN_USE
+            if not _is_windows() or not in_use or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
 
 
 class PrivateStateError(FamiliekilderError):
@@ -343,7 +365,7 @@ def _atomic_write_bytes(target: Path, payload: bytes, *, overwrite: bool) -> Non
             temporary.flush()
             os.fsync(temporary.fileno())
         if overwrite:
-            os.replace(temporary_path, target)
+            _replace(temporary_path, target)
             temporary_path = None
         else:
             try:

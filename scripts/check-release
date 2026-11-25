@@ -143,12 +143,14 @@ def main() -> None:
         run("uv", "pip", "install", "--quiet", "--python", str(python), str(wheel), cwd=work)
         run("uv", "pip", "check", "--python", str(python), cwd=work)
         run(str(binaries / f"familiekilder-mcp{suffix}"), "--version", cwd=work)
-        tests = sorted(str(path) for path in (source / "tests").glob("test_*.py"))
+        tests = sorted((source / "tests").glob("test_*.py"))
+        browser = [path for path in tests if "headless_browser" in path.read_text(encoding="utf-8")]
+        others = [path for path in tests if path not in browser]
         test_environment = {**os.environ, "PYTHONPATH": str(source / "tests/support")}
-        run(
-            str(python), str(source / "scripts/parallel_tests.py"), *tests,
-            cwd=source, environment=test_environment,
-        )
+        runner = [str(python), str(source / "scripts/parallel_tests.py")]
+        run(*runner, *map(str, others), cwd=source, environment=test_environment)
+        # A browser takes all of a small CI machine, so these run one at a time.
+        run(*runner, "--jobs", "1", *map(str, browser), cwd=source, environment=test_environment)
     result = {"version": version, "technical_checks": "passed", "live_source_checks": "not_run"}
     (output / f"check-{version}.json").write_text(json.dumps(result, indent=2) + "\n")
     print(f"Teknisk kontroll bestått for {version}. Ingen ekte kildetjenester er kontaktet.")
